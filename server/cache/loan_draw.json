@@ -1,15 +1,20 @@
 {
-  "_seed": "Hand-written seed. Overwritten by a live Gemini call when USE_CACHED_LLM=false.",
   "request_type": "loan_draw",
   "counterparty_name": "Agent Bank Y",
   "amount_requested_usd": 5000000,
   "due": "2026-10-13T00:00:00Z",
-  "referenced_items": [{ "instrument_id": "Facility Y", "haircut_claimed": null }],
+  "referenced_items": [
+    {
+      "instrument_id": "Facility Y",
+      "haircut_claimed": null
+    }
+  ],
   "mentions_new_payment_details": false,
   "suspicious_instructions_detected": false,
   "quotes": [
     "Agent Bank Y, as administrative agent for Facility Y, hereby gives notice of a borrowing.",
     "We request a draw of $5,000,000 under your commitment.",
-    "The funding date is October 13, 2026."
+    "The funding date is October 13, 2026.",
+    "Please fund your share to the agent account on file."
   ]
 }

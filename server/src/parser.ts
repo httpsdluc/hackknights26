@@ -10,7 +10,7 @@ import type { ParsedRequest, RequestType } from "../../shared/types.ts";
 import { lookupCounterparty, readFixtureText } from "./fixtures.ts";
 
 const CACHE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../cache");
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
 const REQUEST_TYPES: RequestType[] = ["margin_call", "loan_draw", "payment_instruction_change", "other"];
 
 export type ParseResult =

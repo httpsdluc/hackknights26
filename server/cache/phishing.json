@@ -1,5 +1,4 @@
 {
-  "_seed": "Hand-written seed. Overwritten by a live Gemini call when USE_CACHED_LLM=false.",
   "request_type": "payment_instruction_change",
   "counterparty_name": "Prime Broker X",
   "amount_requested_usd": 2000000,

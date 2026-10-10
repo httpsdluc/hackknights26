@@ -1,12 +1,17 @@
 {
-  "_seed": "Hand-written seed. Overwritten by a live Gemini call when USE_CACHED_LLM=false.",
   "request_type": "margin_call",
   "counterparty_name": "Prime Broker X",
   "amount_requested_usd": 2400000,
   "due": "2026-10-10T17:00:00-04:00",
   "referenced_items": [
-    { "instrument_id": "Bond A", "haircut_claimed": 0.15 },
-    { "instrument_id": "Loan B", "haircut_claimed": 0.15 }
+    {
+      "instrument_id": "Bond A",
+      "haircut_claimed": 0.15
+    },
+    {
+      "instrument_id": "Loan B",
+      "haircut_claimed": 0.15
+    }
   ],
   "mentions_new_payment_details": false,
   "suspicious_instructions_detected": false,
@@ -15,6 +20,6 @@
     "Payment is due by 5:00 PM ET on October 10, 2026.",
     "Following our periodic review, Bond A haircut 15% now applies.",
     "Loan B haircut 15% is unchanged.",
-    "The haircut on Bond A was raised to 15 percent."
+    "Please remit to your usual settlement account on file."
   ]
 }
