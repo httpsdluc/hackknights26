@@ -1,0 +1,15 @@
+{
+  "name": "@cosign/chain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./client.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.13",
+    "@solana/web3.js": "^1.98.0"
+  }
+}

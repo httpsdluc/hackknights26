@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# env (never commit real values; .env.example is committed)
+.env
+.env.local
+.env.*.local
+
+# keys and Solana/Anchor artifacts
+keys/
+target/
+.anchor/
+test-ledger/
+
+# build output
+.next/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# OS
+.DS_Store
