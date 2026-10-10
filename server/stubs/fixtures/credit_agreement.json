@@ -1,0 +1,11 @@
+{
+  "_note": "PLACEHOLDER. BUILD_PLAN 7.4.",
+  "facility_id": "FACILITY_Y",
+  "counterparty_id": "aby",
+  "commitment_total": 10000000,
+  "drawn_to_date": 7000000,
+  "min_draw": 500000,
+  "notice_days": 1,
+  "event_of_default": false,
+  "clauses": { "availability": "2.1", "min_draw": "2.2", "notice": "2.3", "default": "7.1" }
+}

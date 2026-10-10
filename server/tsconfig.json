@@ -1,4 +1,4 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["src", "../shared"]
+  "include": ["src", "stubs", "scripts-local", "../shared"]
 }

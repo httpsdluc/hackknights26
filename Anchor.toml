@@ -1,0 +1,23 @@
+[toolchain]
+anchor_version = "0.31.1"
+package_manager = "npm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+policy_vault = "HW56pPpGGjQxfp1UaGgJmDTSmMAHNcZnTo7qbEp3zYX1"
+
+[programs.localnet]
+policy_vault = "HW56pPpGGjQxfp1UaGgJmDTSmMAHNcZnTo7qbEp3zYX1"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "localnet"
+wallet = "keys/deployer.json"
+
+[scripts]
+test = "node --test --test-concurrency=1 --test-timeout=120000 tests/*.test.ts"

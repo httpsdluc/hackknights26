@@ -1,0 +1,8 @@
+{
+  "_note": "PLACEHOLDER. BUILD_PLAN 7.4.",
+  "posted_collateral_usd": 0,
+  "positions": [
+    { "instrument_id": "BOND_A", "name": "Bond A", "asset_class": "hy_bond", "market_value": 10000000 },
+    { "instrument_id": "LOAN_B", "name": "Loan B", "asset_class": "senior_loan", "market_value": 6000000 }
+  ]
+}

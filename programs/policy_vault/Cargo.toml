@@ -1,0 +1,26 @@
+[package]
+name = "policy_vault"
+version = "0.1.0"
+description = "Cosign policy vault: agent proposes, approvers approve, funds move only through execute"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "policy_vault"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "0.31.1"
+anchor-spl = "0.31.1"
+
+# Anchor 0.31 macros reference cfg features (anchor-debug, custom-heap, ...) this crate
+# doesn't declare; recent Rust warns about them. Harmless, so silence them.
+[lints.rust]
+unexpected_cfgs = { level = "allow" }

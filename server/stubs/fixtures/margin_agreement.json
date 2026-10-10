@@ -1,0 +1,9 @@
+{
+  "_note": "PLACEHOLDER. BUILD_PLAN 7.4.",
+  "counterparty_id": "pbx",
+  "haircuts": {
+    "hy_bond": { "haircut": 0.10, "clause": "4.2" },
+    "senior_loan": { "haircut": 0.15, "clause": "4.3" }
+  },
+  "minimum_transfer_amount": 100000
+}
