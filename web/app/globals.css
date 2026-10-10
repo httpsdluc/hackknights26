@@ -1,17 +1,63 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme inline {
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-plex-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+@theme {
+  /* Design tokens. Tailwind's default palette, radii and type scale are switched off on purpose. */
+  --color-*: initial;
+  --color-ground: #f2f3f5;
+  --color-paper: #ffffff;
+  --color-ink: #1b1f27;
+  --color-muted: #545b66;
+  --color-hairline: #e1e4e9;
+  --color-strong: #c4cad3;
+  --color-action: #1f3fbf;
+  --color-action-hover: #162e8c;
+  --color-agree: #1e5a3f;
+  --color-agree-bg: #d6ebdf;
+  --color-dispute: #9a2e24;
+  --color-dispute-bg: #f5deda;
+  --color-held: #6e4a0f;
+  --color-held-bg: #f3e4c4;
+  --color-quote: #ffe58a;
+
+  --radius-*: initial;
+  --radius-pill: 4px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+
+  --text-*: initial;
+  --text-fine: 13px;
+  --text-fine--line-height: 18px;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-heading: 20px;
+  --text-heading--line-height: 28px;
+  --text-title: 36px;
+  --text-title--line-height: 44px;
+  --text-amount: 48px;
+  --text-amount--line-height: 56px;
+  --text-code-xl: 64px;
+  --text-code-xl--line-height: 72px;
+
+  --shadow-*: initial;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 2px;
 }
