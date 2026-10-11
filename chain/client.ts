@@ -13,8 +13,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { getAccount, getAssociatedTokenAddressSync } from "@solana/spl-token";
-import type { ErrorCode, PaymentKind, ProposePaymentArgs } from "../shared/types.ts";
+import { getAccount, getAssociatedTokenAddressSync, unpackAccount } from "@solana/spl-token";
+import type { ChainClient, ErrorCode, PaymentKind, ProposePaymentArgs, ProposePaymentToWalletArgs, VaultState } from "../shared/types.ts";
 import { ERROR_CODES } from "../shared/types.ts";
 import idl from "./idl.json" with { type: "json" };
 import type { PolicyVault } from "./policy_vault_types.ts";
@@ -186,12 +186,7 @@ export async function setAgentEnabled(enabled: boolean): Promise<{ tx: string }>
  * Story 3 "compromised agent": propose straight to a wallet, skipping the registry.
  * The program rejects it (PayeeNotAllowed / PayeeTimelocked); that's the point.
  */
-export async function proposePaymentToWallet(args: {
-  wallet: string;
-  amountUsd: number;
-  kind: PaymentKind;
-  evidenceHash: string;
-}): Promise<{ tx: string; proposalId: string }> {
+export async function proposePaymentToWallet(args: ProposePaymentToWalletArgs): Promise<{ tx: string; proposalId: string }> {
   const { vault, mint } = config();
   const agent = keypair("agent");
   const p = program(agent);
@@ -211,18 +206,39 @@ export async function proposePaymentToWallet(args: {
 }
 
 /** For GET /vault: rules, payees, balances, today's spend. All USD. */
-export async function getVaultState() {
+export async function getVaultState(): Promise<VaultState> {
   const { conn, vault, mint } = config();
   const p = program(Keypair.generate()); // read-only, no signing
   const v = await p.account.vault.fetch(vault);
   const payees = await p.account.payee.all([{ memcmp: { offset: 8, bytes: vault.toBase58() } }]);
   const vaultBalance = await getAccount(conn, getAssociatedTokenAddressSync(mint, vault, true));
 
-  const byTokenAccount = new Map(
-    readRegistry()
-      .filter((c) => c.wallet)
-      .map((c) => [getAssociatedTokenAddressSync(mint, new PublicKey(c.wallet!), true).toBase58(), c]),
+  // Wallet = owner of each payee's token account, read on-chain (one call for all payees).
+  const tokenAccounts = payees.map(({ account }) => account.tokenAccount);
+  const infos = await conn.getMultipleAccountsInfo(tokenAccounts);
+  const ownerOf = new Map(
+    tokenAccounts.map((key, i) => {
+      const info = infos[i];
+      return [key.toBase58(), info ? unpackAccount(key, info).owner.toBase58() : null] as const;
+    }),
   );
+
+  const registry = readRegistry();
+  const rows = payees.map(({ account }) => {
+    const wallet = ownerOf.get(account.tokenAccount.toBase58()) ?? null;
+    const index = registry.findIndex((c) => c.wallet !== undefined && c.wallet === wallet);
+    return {
+      index: index === -1 ? Number.MAX_SAFE_INTEGER : index, // unregistered payees last
+      row: {
+        counterparty_id: registry[index]?.id ?? null,
+        label: Buffer.from(account.label).toString("utf8").replace(/\0+$/, ""),
+        wallet,
+        per_tx_limit_usd: unitsToUsd(account.perTxLimit),
+        active_after: account.activeAfter.toNumber(),
+      },
+    };
+  });
+  rows.sort((a, b) => a.index - b.index);
 
   return {
     rules: {
@@ -230,20 +246,13 @@ export async function getVaultState() {
       large_amount_usd: unitsToUsd(v.largeAmount),
       approvals_required_large: 2,
       approvals_required_small: 1,
-      daily_cap_usd: unitsToUsd(v.dailyCap),
       payee_timelock_secs: v.payeeTimelockSecs.toNumber(),
     },
-    payees: payees.map(({ account }) => {
-      const cp = byTokenAccount.get(account.tokenAccount.toBase58());
-      return {
-        counterparty_id: cp?.id ?? null,
-        label: Buffer.from(account.label).toString("utf8").replace(/\0+$/, ""),
-        wallet: cp?.wallet ?? null,
-        per_tx_limit_usd: unitsToUsd(account.perTxLimit),
-        active_after: account.activeAfter.toNumber(),
-      };
-    }),
+    payees: rows.map((r) => r.row),
     balances: { vault_usd: unitsToUsd(vaultBalance.amount) },
     spent_today_usd: unitsToUsd(v.spentToday),
   };
 }
+
+// Compile-time check that this file implements ChainClient from shared/types.ts.
+({ proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState }) satisfies ChainClient;

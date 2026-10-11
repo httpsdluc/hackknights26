@@ -48,7 +48,7 @@ AlreadyExecuted
 | POST | `/proposals/:id/execute` | | `ProposeResult` |
 | POST | `/vault/kill-switch` | `{ "enabled": boolean }` | `ProposeResult` |
 | POST | `/attack/compromised-agent` | `{ "requestId": string }` | `ProposeResult` |
-| GET | `/vault` | | rules, payees, balances, today's spend |
+| GET | `/vault` | | `VaultState` |
 
 ### Action results
 
@@ -62,6 +62,35 @@ Propose, approve, execute and kill-switch **always return HTTP 200** with one of
 ```
 
 `error_code` is one of the codes in section 3.
+
+### Kill switch direction
+
+`POST /vault/kill-switch { "enabled": false }` **stops the agent** (kill switch ON). `enabled` means **agent enabled**, not "kill switch enabled", and matches `rules.agent_enabled` in `GET /vault`. `{ "enabled": true }` lets the agent propose again.
+
+### `GET /vault` example response
+
+```json
+{
+  "rules": {
+    "agent_enabled": true,
+    "large_amount_usd": 1000000,
+    "approvals_required_large": 2,
+    "approvals_required_small": 1,
+    "payee_timelock_secs": 60
+  },
+  "payees": [
+    { "counterparty_id": "pbx", "label": "Prime Broker X", "wallet": "43utK3Q6iqC9MxkrvL9RRwd7v2F9ApxoqTi98iztEa2e", "per_tx_limit_usd": 5000000, "active_after": 1791677167 },
+    { "counterparty_id": "aby", "label": "Agent Bank Y", "wallet": "BrDqpW74UceVDvwxQTxdAgxrii8rkyEWvoVGzTKaR3YU", "per_tx_limit_usd": 5000000, "active_after": 1791677172 }
+  ],
+  "balances": { "vault_usd": 10000000 },
+  "spent_today_usd": 0
+}
+```
+
+- `wallet` is the full base58 address.
+- `payees` are in registry order, then any payee not in the registry. `counterparty_id` is `null` only for an on-chain payee that isn't in `registry.json` (e.g. the phishing wallet in Story 3); use `label` for its name.
+- `active_after` is a unix timestamp in **seconds**. A payee is under its timelock while `active_after * 1000 > Date.now()`.
+- No daily cap: it was cut and is not enforced, so it isn't reported. `spent_today_usd` is always `0` for now.
 
 ### `GET /requests/:id` example response
 
@@ -101,7 +130,9 @@ evidenceHash(bundle): string   // 64 hex characters (sha256)
 proposePayment({ counterpartyId, amountUsd, kind, evidenceHash }): { tx, proposalId }
 approve(proposalId, approverName): { tx }
 execute(proposalId): { tx }
-setAgentEnabled(enabled): { tx }
+setAgentEnabled(enabled): { tx }          // enabled = agent enabled; false = kill switch ON
+proposePaymentToWallet({ wallet, amountUsd, kind, evidenceHash }): { tx, proposalId }   // Story 3 compromised agent only
+getVaultState(): VaultState               // GET /vault
 ```
 
 Chain functions are async (they return Promises of the shapes above). `amountUsd` is whole USD; `chain/` converts to 6 decimals.

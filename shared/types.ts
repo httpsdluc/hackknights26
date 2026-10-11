@@ -104,11 +104,39 @@ export interface ApproveBody {
 }
 
 export interface KillSwitchBody {
+  /** AGENT enabled, not kill switch enabled: false stops the agent (kill switch ON). Same as rules.agent_enabled. */
   enabled: boolean;
 }
 
 export interface CompromisedAgentBody {
   requestId: string;
+}
+
+export interface VaultPayee {
+  /** null only for an on-chain payee that isn't in registry.json (e.g. the phishing wallet in Story 3) */
+  counterparty_id: string | null;
+  label: string;
+  /** full base58 address */
+  wallet: string | null;
+  per_tx_limit_usd: number;
+  /** unix timestamp in SECONDS; the payee can receive payments from then on */
+  active_after: number;
+}
+
+/** GET /vault. All money in whole USD. */
+export interface VaultState {
+  rules: {
+    agent_enabled: boolean;
+    large_amount_usd: number;
+    approvals_required_large: number;
+    approvals_required_small: number;
+    payee_timelock_secs: number;
+  };
+  /** registry order (pbx, aby), then any payee not in the registry */
+  payees: VaultPayee[];
+  balances: { vault_usd: number };
+  /** always 0 for now: the daily cap is cut */
+  spent_today_usd: number;
 }
 
 // ---- chain → server boundary (CONTRACT.md §5) ----
@@ -125,9 +153,23 @@ export interface ProposePaymentArgs {
   evidenceHash: string;
 }
 
+/** Story 3 "compromised agent": propose straight to a wallet, skipping the registry. */
+export interface ProposePaymentToWalletArgs {
+  /** base58 wallet address */
+  wallet: string;
+  /** whole USD */
+  amountUsd: number;
+  kind: PaymentKind;
+  /** 64 hex characters */
+  evidenceHash: string;
+}
+
 export interface ChainClient {
   proposePayment(args: ProposePaymentArgs): Promise<{ tx: string; proposalId: string }>;
   approve(proposalId: string, approverName: string): Promise<{ tx: string }>;
   execute(proposalId: string): Promise<{ tx: string }>;
+  /** true = agent enabled; false = agent stopped (kill switch ON) */
   setAgentEnabled(enabled: boolean): Promise<{ tx: string }>;
+  proposePaymentToWallet(args: ProposePaymentToWalletArgs): Promise<{ tx: string; proposalId: string }>;
+  getVaultState(): Promise<VaultState>;
 }
