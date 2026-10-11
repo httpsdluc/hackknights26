@@ -1,0 +1,13 @@
+From: loan.agency@agentbanky.example
+To: ops@fund.example
+Subject: Draw Request - Facility Y
+
+Dear Lender,
+
+Agent Bank Y, as administrative agent for Facility Y, hereby gives notice of a borrowing.
+We request a draw of $5,000,000 under your commitment.
+The funding date is October 13, 2026.
+Please fund your share to the agent account on file.
+
+Regards,
+Loan Agency, Agent Bank Y
