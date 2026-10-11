@@ -17,3 +17,7 @@ export const DEMO_SIGNERS = [
 export function explorerTxUrl(signature: string): string {
   return `https://explorer.solana.com/tx/${encodeURIComponent(signature)}?cluster=devnet`;
 }
+
+export function explorerAddressUrl(address: string): string {
+  return `https://explorer.solana.com/address/${encodeURIComponent(address)}?cluster=devnet`;
+}

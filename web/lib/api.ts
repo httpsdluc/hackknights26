@@ -6,8 +6,9 @@ import type {
   KillSwitchBody,
   ProposeResult,
   Request as CosignRequest,
+  VaultState,
 } from "../../shared/types.ts";
-import { checkProposeResult, checkRequest, checkRequestList } from "./contract-check";
+import { checkProposeResult, checkRequest, checkRequestList, checkVaultState } from "./contract-check";
 import * as mock from "./mocks/server";
 
 export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
@@ -81,4 +82,6 @@ export async function fireCompromisedAgent(requestId: string): Promise<ProposeRe
   return checkProposeResult(await (USE_MOCKS ? mock.mockCompromisedAgent() : post("/attack/compromised-agent", body)));
 }
 
-// GET /vault is not wrapped yet: CONTRACT.md §4 gives it no response shape.
+export async function getVault(): Promise<VaultState> {
+  return checkVaultState(await (USE_MOCKS ? mock.mockGetVault() : call("/vault")));
+}
