@@ -1,6 +1,6 @@
 // In-browser stand-in for the server, used when NEXT_PUBLIC_USE_MOCKS=true.
 // Shapes are CONTRACT.md §4 only. State lives in sessionStorage so a reload keeps the demo's place.
-import type { ErrorCode, ProposeResult, Request as CosignRequest } from "../../../shared/types.ts";
+import type { ErrorCode, ProposeResult, Request as CosignRequest, VaultState } from "../../../shared/types.ts";
 import seed from "./requests.json";
 
 interface MockState {
@@ -8,11 +8,20 @@ interface MockState {
   approvers: Record<string, string[]>;
   agentEnabled: boolean;
   nonce: number;
+  /** unix seconds the mock vault was "created"; payee timelocks count from here */
+  createdAt?: number;
 }
 
 const KEY = "cosign-mock-state-v1";
 const SIGNERS = ["approver1", "approver2"];
 const LARGE_AMOUNT_USD = 1_000_000;
+const PAYEE_TIMELOCK_SECS = 60;
+const PER_TX_LIMIT_USD = 5_000_000;
+// Same payees and wallets as the CONTRACT.md §4 example. Agent Bank Y is added later, so its timelock is visible.
+const PAYEES = [
+  { counterparty_id: "pbx", label: "Prime Broker X", wallet: "43utK3Q6iqC9MxkrvL9RRwd7v2F9ApxoqTi98iztEa2e", added_secs: -3600 },
+  { counterparty_id: "aby", label: "Agent Bank Y", wallet: "BrDqpW74UceVDvwxQTxdAgxrii8rkyEWvoVGzTKaR3YU", added_secs: 0 },
+];
 
 function load(): MockState {
   try {
@@ -113,4 +122,28 @@ export async function mockKillSwitch(enabled: boolean): Promise<ProposeResult> {
 export async function mockCompromisedAgent(): Promise<ProposeResult> {
   await wait();
   return fail(load().agentEnabled ? "PayeeNotAllowed" : "AgentDisabled");
+}
+
+export async function mockGetVault(): Promise<VaultState> {
+  await wait();
+  const state = load();
+  state.createdAt ??= Math.floor(Date.now() / 1000);
+  save(state);
+  const created = state.createdAt;
+  return {
+    rules: {
+      agent_enabled: state.agentEnabled,
+      large_amount_usd: LARGE_AMOUNT_USD,
+      approvals_required_large: 2,
+      approvals_required_small: 1,
+      payee_timelock_secs: PAYEE_TIMELOCK_SECS,
+    },
+    payees: PAYEES.map(({ added_secs, ...p }) => ({
+      ...p,
+      per_tx_limit_usd: PER_TX_LIMIT_USD,
+      active_after: created + added_secs + PAYEE_TIMELOCK_SECS,
+    })),
+    balances: { vault_usd: 10_000_000 },
+    spent_today_usd: 0,
+  };
 }

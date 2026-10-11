@@ -1,6 +1,12 @@
 // Runtime check that a response has the shape CONTRACT.md §4 promises. A mismatch is reported
 // by field name instead of being papered over, so the owning teammate can be told exactly what differs.
-import type { ProposeResult, Request as CosignRequest, RequestType, VerificationStatus } from "../../shared/types.ts";
+import type {
+  ProposeResult,
+  Request as CosignRequest,
+  RequestType,
+  VaultState,
+  VerificationStatus,
+} from "../../shared/types.ts";
 
 export class ContractError extends Error {
   constructor(path: string, expected: string) {
@@ -92,4 +98,33 @@ export function checkProposeResult(v: unknown): ProposeResult {
     str(r, "error_code", path);
   }
   return v as ProposeResult;
+}
+
+export function checkVaultState(v: unknown): VaultState {
+  const path = "VaultState";
+  const s = obj(v, path);
+
+  const rPath = `${path}.rules`;
+  const rules = obj(s.rules, rPath);
+  bool(rules, "agent_enabled", rPath);
+  num(rules, "large_amount_usd", rPath);
+  num(rules, "approvals_required_large", rPath);
+  num(rules, "approvals_required_small", rPath);
+  num(rules, "payee_timelock_secs", rPath);
+
+  list(s, "payees", path).forEach((payee, i) => {
+    const pPath = `${path}.payees[${i}]`;
+    const p = obj(payee, pPath);
+    if (p.counterparty_id !== null && typeof p.counterparty_id !== "string") {
+      throw new ContractError(`${pPath}.counterparty_id`, "a string or null");
+    }
+    str(p, "label", pPath);
+    if (p.wallet !== null && typeof p.wallet !== "string") throw new ContractError(`${pPath}.wallet`, "a string or null");
+    num(p, "per_tx_limit_usd", pPath);
+    num(p, "active_after", pPath);
+  });
+
+  num(obj(s.balances, `${path}.balances`), "vault_usd", `${path}.balances`);
+  num(s, "spent_today_usd", path);
+  return v as VaultState;
 }
