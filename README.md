@@ -2,6 +2,7 @@
 
 An AI agent that recomputes every payment request a credit fund receives from source data, and a Solana program that makes it impossible for that agent to move money without human approval.
 
+- **Run the demo / record the video: [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md)**
 - Plan, demo script and design rules: [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md)
 - Shared data shapes, routes, error codes: [CONTRACT.md](CONTRACT.md) (mirrored in [shared/types.ts](shared/types.ts), **frozen**)
 
@@ -33,9 +34,8 @@ npm install
 cp .env.example .env
 ```
 
-```bash
-cp .env.example web/.env.local
-```
+Don't create `web/.env.local`: the web app calls the real server by default (`npm run dev:mocks -w web` for mock data).
+To act on Solana you also need the devnet keys in `keys/` (see the runbook).
 
 Never commit `.env`, `.env.local` or anything in `keys/`.
 
