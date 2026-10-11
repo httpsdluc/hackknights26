@@ -4,11 +4,11 @@ import { useId, useRef, useState } from "react";
 import type { Proposal, ProposeResult, Request as CosignRequest } from "../../shared/types.ts";
 import { approveProposal, executeProposal, proposePayment } from "@/lib/api";
 import { formatUsd } from "@/lib/format";
-import { DEMO_SIGNERS, explorerTxUrl } from "@/lib/labels";
+import { DEMO_SIGNERS, counterpartyLabel, explorerTxUrl } from "@/lib/labels";
 import { useCountUp } from "@/lib/use-count-up";
 import { CheckIcon, ExternalIcon } from "./icons";
 import { ProposalPill } from "./result";
-import { Button, ErrorBanner, Waiting } from "./ui";
+import { Button, ErrorBanner } from "./ui";
 
 type Action = "propose" | "approve" | "execute";
 type Failure = { code: string } | { message: string };
@@ -138,10 +138,7 @@ export function PaymentTicket({ request, onChanged }: { request: CosignRequest; 
 
         <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-small">
           <dt className="text-muted">Payee</dt>
-          <dd className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="max-w-full truncate font-mono">{request.counterparty_id}</span>
-            <Waiting field="counterparty_name" />
-          </dd>
+          <dd className="min-w-0 truncate font-medium">{counterpartyLabel(request.counterparty_id)}</dd>
           <dt className="text-muted">Rule</dt>
           <dd>
             {proposal
@@ -180,7 +177,6 @@ export function PaymentTicket({ request, onChanged }: { request: CosignRequest; 
                   <li key={`signed-${i}`} className="relative flex min-h-10 flex-wrap items-center gap-2 py-1 text-action">
                     <CheckIcon className="h-4 w-4 animate-pop" />
                     <span className="font-medium">Approved</span>
-                    <Waiting field="approved_by" />
                     <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px origin-left animate-draw bg-ink" />
                   </li>
                 ) : (
@@ -279,13 +275,7 @@ export function PaymentTicket({ request, onChanged }: { request: CosignRequest; 
           </ol>
         ) : null}
         <p className="mt-1 text-small text-muted">
-          {sessionLog.length > 0 ? "Only actions taken in this browser tab are listed. " : ""}
-          <Waiting field="proposal events (action, actor, time, tx)" />
-        </p>
-
-        <h3 className="mt-5 border-t border-hairline pt-4 font-semibold">Vault limits</h3>
-        <p className="mt-1">
-          <Waiting field="GET /vault response shape" />
+          {sessionLog.length > 0 ? "Only actions taken in this browser tab are listed." : "No on-chain actions yet."}
         </p>
       </div>
     </section>

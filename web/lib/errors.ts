@@ -1,7 +1,7 @@
-import type { ErrorCode } from "../../shared/types.ts";
+import type { ResultErrorCode } from "../../shared/types.ts";
 
-// One plain sentence per chain error code (CONTRACT.md §3).
-const SENTENCES: Record<ErrorCode, string> = {
+// One plain sentence per error code (CONTRACT.md §3).
+const SENTENCES: Record<ResultErrorCode, string> = {
   AgentCannotApprove: "The agent's key can never be an approver.",
   Unauthorized: "This signer isn't allowed to do that.",
   AgentDisabled: "The agent has been switched off and can't propose payments.",
@@ -12,9 +12,10 @@ const SENTENCES: Record<ErrorCode, string> = {
   NotEnoughApprovals: "This payment needs more approvals before it can be released.",
   DailyCapExceeded: "This payment would go over today's limit.",
   AlreadyExecuted: "This payment has already been released.",
+  AgentRefused: "The agent refused to propose this payment because Cosign's checks rejected the request.",
 };
 
 /** Sentence for a code, or null for a code CONTRACT.md doesn't list (show the raw code alone). */
 export function errorSentence(code: string): string | null {
-  return Object.hasOwn(SENTENCES, code) ? SENTENCES[code as ErrorCode] : null;
+  return Object.hasOwn(SENTENCES, code) ? SENTENCES[code as ResultErrorCode] : null;
 }

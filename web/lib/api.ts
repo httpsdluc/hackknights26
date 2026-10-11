@@ -1,13 +1,18 @@
 // Every piece of data the web app reads or writes goes through this file.
 // Real calls hit /api/*, which next.config.ts proxies to the server.
 import type {
+  AddPayeeResult,
   ApproveBody,
   CompromisedAgentBody,
+  EvidenceCheck,
   KillSwitchBody,
   ProposeResult,
   Request as CosignRequest,
+  VaultState,
 } from "../../shared/types.ts";
-import { checkProposeResult, checkRequest, checkRequestList } from "./contract-check";
+import {
+  checkAddPayeeResult, checkEvidenceCheck, checkProposeResult, checkRequest, checkRequestList, checkVaultState,
+} from "./contract-check";
 import * as mock from "./mocks/server";
 
 export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
@@ -81,4 +86,16 @@ export async function fireCompromisedAgent(requestId: string): Promise<ProposeRe
   return checkProposeResult(await (USE_MOCKS ? mock.mockCompromisedAgent() : post("/attack/compromised-agent", body)));
 }
 
-// GET /vault is not wrapped yet: CONTRACT.md §4 gives it no response shape.
+/** Story 3: a phished approver adds the phishing wallet as a payee (starts its timelock). */
+export async function addPhishingPayee(): Promise<AddPayeeResult> {
+  return checkAddPayeeResult(await (USE_MOCKS ? mock.mockAddPhishingPayee() : post("/attack/add-phishing-payee")));
+}
+
+/** "Verify evidence": the server recomputes the hash and reads the on-chain one. */
+export async function verifyEvidence(requestId: string): Promise<EvidenceCheck> {
+  return checkEvidenceCheck(await (USE_MOCKS ? mock.mockVerifyEvidence(requestId) : call(`/requests/${seg(requestId)}/evidence`)));
+}
+
+export async function getVault(): Promise<VaultState> {
+  return checkVaultState(await (USE_MOCKS ? mock.mockGetVault() : call("/vault")));
+}

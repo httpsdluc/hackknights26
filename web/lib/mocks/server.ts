@@ -1,6 +1,8 @@
 // In-browser stand-in for the server, used when NEXT_PUBLIC_USE_MOCKS=true.
 // Shapes are CONTRACT.md §4 only. State lives in sessionStorage so a reload keeps the demo's place.
-import type { ErrorCode, ProposeResult, Request as CosignRequest } from "../../../shared/types.ts";
+import type {
+  AddPayeeResult, EvidenceCheck, ResultErrorCode, ProposeResult, Request as CosignRequest, VaultState,
+} from "../../../shared/types.ts";
 import seed from "./requests.json";
 
 interface MockState {
@@ -8,11 +10,24 @@ interface MockState {
   approvers: Record<string, string[]>;
   agentEnabled: boolean;
   nonce: number;
+  /** unix seconds the mock vault was "created"; payee timelocks count from here */
+  createdAt?: number;
+  /** unix seconds the phishing wallet becomes payable, once a "phished approver" added it */
+  phishingActiveAfter?: number;
 }
+
+const PHISHING_WALLET = "AU4NQcZ8yEFKo5bx6BeBn89MJuVFPuTiys64FF5xZfna";
 
 const KEY = "cosign-mock-state-v1";
 const SIGNERS = ["approver1", "approver2"];
 const LARGE_AMOUNT_USD = 1_000_000;
+const PAYEE_TIMELOCK_SECS = 60;
+const PER_TX_LIMIT_USD = 5_000_000;
+// Same payees and wallets as the CONTRACT.md §4 example. Agent Bank Y is added later, so its timelock is visible.
+const PAYEES = [
+  { counterparty_id: "pbx", label: "Prime Broker X", wallet: "43utK3Q6iqC9MxkrvL9RRwd7v2F9ApxoqTi98iztEa2e", added_secs: -3600 },
+  { counterparty_id: "aby", label: "Agent Bank Y", wallet: "BrDqpW74UceVDvwxQTxdAgxrii8rkyEWvoVGzTKaR3YU", added_secs: 0 },
+];
 
 function load(): MockState {
   try {
@@ -33,7 +48,7 @@ function save(state: MockState) {
 }
 
 const wait = () => new Promise((r) => setTimeout(r, 500));
-const fail = (error_code: ErrorCode): ProposeResult => ({ ok: false, error_code });
+const fail = (error_code: ResultErrorCode): ProposeResult => ({ ok: false, error_code });
 
 function mockTx(state: MockState): string {
   state.nonce += 1;
@@ -56,7 +71,7 @@ export async function mockPropose(requestId: string): Promise<ProposeResult> {
   const req = state.requests.find((r) => r.id === requestId);
   if (!req) return fail("Unauthorized");
   if (req.proposal) return { ok: true, tx: mockTx(state), proposal_id: req.proposal.id };
-  if (req.verification.status === "rejected") return fail("Unauthorized");
+  if (req.verification.status === "rejected") return fail("AgentRefused");
   if (!state.agentEnabled) return fail("AgentDisabled");
   const id = `mock_prop_${state.nonce + 1}`;
   req.proposal = {
@@ -112,5 +127,63 @@ export async function mockKillSwitch(enabled: boolean): Promise<ProposeResult> {
 
 export async function mockCompromisedAgent(): Promise<ProposeResult> {
   await wait();
-  return fail(load().agentEnabled ? "PayeeNotAllowed" : "AgentDisabled");
+  const state = load();
+  if (!state.agentEnabled) return fail("AgentDisabled");
+  if (state.phishingActiveAfter === undefined) return fail("PayeeNotAllowed");
+  if (Date.now() / 1000 < state.phishingActiveAfter) return fail("PayeeTimelocked");
+  const tx = mockTx(state);
+  save(state);
+  return { ok: true, tx, proposal_id: `mock_prop_${state.nonce}` };
+}
+
+export async function mockAddPhishingPayee(): Promise<AddPayeeResult> {
+  await wait();
+  const state = load();
+  if (state.phishingActiveAfter !== undefined) return { ok: true, tx: null, active_after: state.phishingActiveAfter };
+  state.phishingActiveAfter = Math.floor(Date.now() / 1000) + PAYEE_TIMELOCK_SECS;
+  const tx = mockTx(state);
+  save(state);
+  return { ok: true, tx, active_after: state.phishingActiveAfter };
+}
+
+export async function mockVerifyEvidence(requestId: string): Promise<EvidenceCheck> {
+  await wait();
+  const req = load().requests.find((r) => r.id === requestId);
+  const hash = req?.evidence_hash ?? "";
+  return { recomputed_hash: hash, stored_hash: hash, on_chain_hash: req?.proposal ? hash : null, match: true };
+}
+
+export async function mockGetVault(): Promise<VaultState> {
+  await wait();
+  const state = load();
+  state.createdAt ??= Math.floor(Date.now() / 1000);
+  save(state);
+  const created = state.createdAt;
+  return {
+    rules: {
+      agent_enabled: state.agentEnabled,
+      large_amount_usd: LARGE_AMOUNT_USD,
+      approvals_required_large: 2,
+      approvals_required_small: 1,
+      payee_timelock_secs: PAYEE_TIMELOCK_SECS,
+    },
+    payees: [
+      ...PAYEES.map(({ added_secs, ...p }) => ({
+        ...p,
+        per_tx_limit_usd: PER_TX_LIMIT_USD,
+        active_after: created + added_secs + PAYEE_TIMELOCK_SECS,
+      })),
+      ...(state.phishingActiveAfter === undefined
+        ? []
+        : [{
+            counterparty_id: null,
+            label: "New wallet (phishing email)",
+            wallet: PHISHING_WALLET,
+            per_tx_limit_usd: PER_TX_LIMIT_USD,
+            active_after: state.phishingActiveAfter,
+          }]),
+    ],
+    balances: { vault_usd: 10_000_000 },
+    spent_today_usd: 0,
+  };
 }

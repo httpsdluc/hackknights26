@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import {
-  approveProposal, compromisedAgentPropose, executeProposal, getRequest, getVault, listRequests,
-  proposeForRequest, setKillSwitch,
+  addPhishingPayee, approveProposal, checkEvidence, compromisedAgentPropose, executeProposal, getRequest, getVault, listRequests,
+  proposeForRequest, setKillSwitch, warmUp,
 } from "./agent.ts";
 import { DEPS_SUMMARY } from "./deps.ts";
 
@@ -28,7 +28,13 @@ app.get<IdParams>("/requests/:id", async (req, reply) => {
   return r;
 });
 
-app.post<IdParams>("/requests/:id/propose", async (req) => proposeForRequest(req.params.id));
+app.get<IdParams>("/requests/:id/evidence", async (req, reply) => {
+  const r = await checkEvidence(req.params.id);
+  if ("ok" in r) return reply.code(r.error === "not_found" ? 404 : 422).send({ error: r.error, detail: r.detail });
+  return r;
+});
+
+app.post<IdParams>("/requests/:id/propose",async (req) => proposeForRequest(req.params.id));
 
 app.post<IdParams & { Body: { approver: string } }>(
   "/proposals/:id/approve",
@@ -50,12 +56,15 @@ app.post<{ Body: { requestId: string } }>(
   async (req) => compromisedAgentPropose(req.body.requestId),
 );
 
+app.post("/attack/add-phishing-payee", async () => addPhishingPayee());
+
 app.get("/vault", async () => getVault());
 
 const port = Number(process.env.PORT ?? 3001);
 
 try {
   await app.listen({ port, host: "127.0.0.1" });
+  warmUp();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

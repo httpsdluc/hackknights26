@@ -1,6 +1,6 @@
 import type { Request as CosignRequest } from "../../shared/types.ts";
 import { formatPercent, formatUsd } from "./format";
-import { REQUEST_TYPE_LABEL } from "./labels";
+import { REQUEST_TYPE_LABEL, counterpartyLabel } from "./labels";
 
 /** Plain-text dispute notice for a partly agreed request, built only from CONTRACT.md fields. */
 export function disputeNotice(r: CosignRequest): string {
@@ -13,7 +13,7 @@ export function disputeNotice(r: CosignRequest): string {
         `Clause ${l.clause} of our agreement sets ${formatPercent(l.haircut_agreed)}.`,
     );
   return [
-    `To: ${r.counterparty_id}`,
+    `To: ${counterpartyLabel(r.counterparty_id)}`,
     `Re: ${REQUEST_TYPE_LABEL[r.type]} for ${formatUsd(r.amount_requested_usd)}`,
     "",
     `We recomputed this request against our agreement and dispute ${formatUsd(v.disputed_usd)} of it.`,

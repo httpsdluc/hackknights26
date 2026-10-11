@@ -79,6 +79,7 @@ async function callGemini(email: string): Promise<unknown> {
     method: "POST",
     // Key goes in a header, not the URL, so it can't end up in any logged URL.
     headers: { "content-type": "application/json", "x-goog-api-key": key },
+    signal: AbortSignal.timeout(8000),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: `<<<EMAIL_START>>>\n${email}\n<<<EMAIL_END>>>` }] }],
@@ -92,14 +93,35 @@ async function callGemini(email: string): Promise<unknown> {
   return JSON.parse(text);
 }
 
-/** Raw model JSON for an email: from server/cache/ when USE_CACHED_LLM=true, else live (and cached). */
+/** Live Gemini with one retry (503 "high demand" blips are common). */
+async function callGeminiWithRetry(email: string): Promise<unknown> {
+  try {
+    return await callGemini(email);
+  } catch (e) {
+    console.warn(`Gemini failed, retrying once: ${(e as Error).message.slice(0, 120)}`);
+    await new Promise((r) => setTimeout(r, 1000));
+    return callGemini(email);
+  }
+}
+
+/**
+ * Raw model JSON for an email: from server/cache/ when USE_CACHED_LLM=true, else live (and cached).
+ * If live Gemini fails and a cached answer exists, falls back to it so the demo never shows an empty inbox.
+ */
 async function rawLlmOutput(emailFile: string, email: string): Promise<unknown> {
   const cacheFile = path.join(CACHE_DIR, path.basename(emailFile).replace(/\.txt$/, "") + ".json");
   if (process.env.USE_CACHED_LLM === "true") {
     if (!existsSync(cacheFile)) throw new Error(`USE_CACHED_LLM=true but no cache file ${path.basename(cacheFile)}`);
     return JSON.parse(readFileSync(cacheFile, "utf8"));
   }
-  const out = await callGemini(email);
+  let out: unknown;
+  try {
+    out = await callGeminiWithRetry(email);
+  } catch (e) {
+    if (!existsSync(cacheFile)) throw e;
+    console.warn(`Gemini unavailable for ${path.basename(emailFile)}, using cached answer: ${(e as Error).message.slice(0, 120)}`);
+    return JSON.parse(readFileSync(cacheFile, "utf8"));
+  }
   mkdirSync(CACHE_DIR, { recursive: true });
   writeFileSync(cacheFile, JSON.stringify(out, null, 2) + "\n");
   return out;

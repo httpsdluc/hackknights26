@@ -1,16 +1,15 @@
 // Agent service: parse → verify (engine) → evidence hash → propose (chain).
 // State is in memory only.
 import { createHash } from "node:crypto";
-import { ERROR_CODES } from "../../shared/types.ts";
-import type { ErrorCode, PaymentKind, ProposeResult, Proposal, Request, Verification } from "../../shared/types.ts";
+import { AGENT_REFUSED, ERROR_CODES } from "../../shared/types.ts";
+import type {
+  AddPayeeResult, ErrorCode, EvidenceCheck, ParsedRequest, PaymentKind, ProposeResult, Proposal, Request, Verification,
+} from "../../shared/types.ts";
 import * as deps from "./deps.ts";
 import { REQUEST_EMAILS, readFixtureJson, readFixtureText } from "./fixtures.ts";
 import { parseEmail, type ParseResult } from "./parser.ts";
 
 const LARGE_AMOUNT_USD = 1_000_000; // vault.large_amount (BUILD_PLAN §7.4): >= this needs 2 approvals
-
-/** Returned when the agent itself refuses to propose. CONTRACT.md has no dedicated code for this. */
-const REFUSED: ErrorCode = "Unauthorized";
 
 interface ProposalState extends Proposal {
   request_id: string;
@@ -62,7 +61,28 @@ async function analyzeUncached(id: string): Promise<Analysis> {
   const parse = await parseEmail(emailFile);
   if (!parse.ok) return { ok: false, id, error: parse.error, detail: parse.detail };
   const p = parse.parsed;
+  const { verification, evidence_hash } = verifyAndHash(p, parse.email);
 
+  return {
+    ok: true,
+    parse,
+    request: {
+      id,
+      type: p.request_type,
+      counterparty_id: parse.counterparty_id,
+      amount_requested_usd: p.amount_requested_usd,
+      quotes: p.quotes,
+      verification,
+      evidence_hash,
+    },
+  };
+}
+
+/**
+ * Engine verification + evidence hash (BUILD_PLAN §7.3) for a parsed request. Reads the fixture
+ * files fresh every call, so GET /requests/:id/evidence detects any change to them or the email.
+ */
+function verifyAndHash(p: ParsedRequest, email: string): { verification: Verification; evidence_hash: string } {
   let verification: Verification;
   let inputs: Record<string, unknown>;
   if (p.request_type === "margin_call") {
@@ -82,25 +102,12 @@ async function analyzeUncached(id: string): Promise<Analysis> {
 
   const evidence_hash = deps.evidenceHash({
     request: p,
-    source_email_sha256: parse.email_sha256,
+    source_email_sha256: createHash("sha256").update(email).digest("hex"),
     inputs,
     result: verification,
     engine_version: deps.ENGINE_VERSION,
   });
-
-  return {
-    ok: true,
-    parse,
-    request: {
-      id,
-      type: p.request_type,
-      counterparty_id: parse.counterparty_id,
-      amount_requested_usd: p.amount_requested_usd,
-      quotes: p.quotes,
-      verification,
-      evidence_hash,
-    },
-  };
+  return { verification, evidence_hash };
 }
 
 export function analyze(id: string): Promise<Analysis> {
@@ -128,13 +135,25 @@ export async function getRequest(id: string): Promise<Request | Extract<Analysis
 }
 
 export async function listRequests(): Promise<Request[]> {
+  // In parallel: a live Gemini call can take ~10s, and the web app gives up after 20s.
+  const ids = Object.keys(REQUEST_EMAILS);
+  const results = await Promise.all(ids.map((id) => getRequest(id)));
   const out: Request[] = [];
-  for (const id of Object.keys(REQUEST_EMAILS)) {
-    const r = await getRequest(id);
-    if ("ok" in r) console.error(`request ${id} skipped: ${r.error} (${r.detail})`);
+  results.forEach((r, i) => {
+    if ("ok" in r) console.error(`request ${ids[i]} skipped: ${r.error} (${r.detail})`);
     else out.push(r);
-  }
+  });
   return out;
+}
+
+/** Parse every inbox email at startup so the first page load doesn't wait on Gemini. */
+export function warmUp(): void {
+  for (const id of Object.keys(REQUEST_EMAILS)) {
+    analyze(id).then(
+      (a) => console.log(`warm-up ${id}: ${a.ok ? "ok" : `${a.error} (${a.detail})`}`),
+      (e) => console.error(`warm-up ${id} failed: ${(e as Error)?.message}`),
+    );
+  }
 }
 
 /** Why the agent refuses to propose, or null if it may. */
@@ -158,7 +177,7 @@ export async function proposeForRequest(id: string): Promise<ProposeResult> {
   const why = refusal(a);
   if (why || !a.ok) {
     console.warn(`agent refused to propose for ${id}: ${why}`);
-    return { ok: false, error_code: REFUSED };
+    return { ok: false, error_code: AGENT_REFUSED };
   }
 
   const r = a.request;
@@ -218,6 +237,43 @@ export async function compromisedAgentPropose(requestId: string): Promise<Propos
       "",
     ),
   );
+}
+
+/**
+ * Story 3, second beat: a phished approver adds the phishing wallet as a payee. The program starts
+ * its timelock, so the compromised agent's next proposal fails with PayeeTimelocked.
+ */
+export async function addPhishingPayee(): Promise<AddPayeeResult> {
+  const attack = readFixtureJson<{ phishing_wallet: string }>("attack.json");
+  try {
+    const r = await deps.addPayeeForWallet({ wallet: attack.phishing_wallet, label: "New wallet (phishing email)" });
+    return { ok: true, tx: r.tx, active_after: r.activeAfter };
+  } catch (err) {
+    const code = toErrorCode(err);
+    if (!code) {
+      console.error("add payee failed with no known error code:", (err as Error)?.message);
+      throw err;
+    }
+    return { ok: false, error_code: code };
+  }
+}
+
+/**
+ * "Verify evidence": recompute the hash from the email file, fixtures and engine as they are now
+ * (only the parsed request is reused), and compare with the request's hash and the on-chain one.
+ */
+export async function checkEvidence(id: string): Promise<EvidenceCheck | Extract<Analysis, { ok: false }>> {
+  const a = await analyze(id);
+  if (!a.ok) return a;
+  const { evidence_hash: recomputed } = verifyAndHash(a.parse.parsed, readFixtureText(REQUEST_EMAILS[id]!));
+  const pid = proposalByRequest.get(id);
+  const onChain = pid ? await deps.getProposalEvidenceHash(pid) : null;
+  return {
+    recomputed_hash: recomputed,
+    stored_hash: a.request.evidence_hash,
+    on_chain_hash: onChain,
+    match: recomputed === a.request.evidence_hash && (onChain === null || onChain === recomputed),
+  };
 }
 
 export const getVault = () => deps.getVaultState();

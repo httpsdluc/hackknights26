@@ -25,5 +25,7 @@ export const execute = pick("execute", c.execute, chainStub.execute);
 export const setAgentEnabled = pick("setAgentEnabled", c.setAgentEnabled, chainStub.setAgentEnabled);
 export const proposePaymentToWallet = pick("proposePaymentToWallet", c.proposePaymentToWallet, chainStub.proposePaymentToWallet);
 export const getVaultState = pick("getVaultState", c.getVaultState, chainStub.getVaultState);
+export const addPayeeForWallet = pick("addPayeeForWallet", c.addPayeeForWallet, chainStub.addPayeeForWallet);
+export const getProposalEvidenceHash = pick("getProposalEvidenceHash", c.getProposalEvidenceHash, chainStub.getProposalEvidenceHash);
 
 export const DEPS_SUMMARY = used.join(" ");

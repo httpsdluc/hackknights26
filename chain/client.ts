@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import anchor from "@coral-xyz/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { getAccount, getAssociatedTokenAddressSync, unpackAccount } from "@solana/spl-token";
+import { getAccount, getAssociatedTokenAddressSync, getOrCreateAssociatedTokenAccount, unpackAccount } from "@solana/spl-token";
 import type { ChainClient, ErrorCode, PaymentKind, ProposePaymentArgs, ProposePaymentToWalletArgs, VaultState } from "../shared/types.ts";
 import { ERROR_CODES } from "../shared/types.ts";
 import idl from "./idl.json" with { type: "json" };
@@ -254,5 +254,43 @@ export async function getVaultState(): Promise<VaultState> {
   };
 }
 
+/**
+ * Story 3, second beat: a phished approver adds `wallet` as a payee. The program sets
+ * active_after = now + timelock, so proposals to it fail with PayeeTimelocked until then.
+ * If the wallet is already a payee of this vault, sends nothing and returns tx: null.
+ */
+export async function addPayeeForWallet(args: { wallet: string; label: string }): Promise<{ tx: string | null; activeAfter: number }> {
+  const { conn, vault, mint } = config();
+  const approver = keypair("approver1");
+  const p = program(approver);
+  const tokenAccount = getAssociatedTokenAddressSync(mint, new PublicKey(args.wallet), true);
+  const payee = payeePda(p.programId, vault, tokenAccount);
+
+  const existing = await p.account.payee.fetchNullable(payee);
+  if (existing) return { tx: null, activeAfter: existing.activeAfter.toNumber() };
+
+  // add_payee needs an initialized token account for the vault's mint; the approver pays its rent.
+  await getOrCreateAssociatedTokenAccount(conn, approver, mint, new PublicKey(args.wallet), true, "confirmed");
+  const label = Buffer.alloc(32);
+  label.write(args.label.slice(0, 32));
+  const tx = await run(() =>
+    p.methods
+      .addPayee([...label], usdToUnits(5_000_000))
+      .accountsPartial({ approver: approver.publicKey, vault, payeeTokenAccount: tokenAccount, payee })
+      .rpc(),
+  );
+  const added = await p.account.payee.fetch(payee);
+  return { tx, activeAfter: added.activeAfter.toNumber() };
+}
+
+/** The evidence hash stored in a proposal account, as 64 hex characters. */
+export async function getProposalEvidenceHash(proposalId: string): Promise<string> {
+  const p = program(Keypair.generate()); // read-only, no signing
+  const proposal = await p.account.proposal.fetch(new PublicKey(proposalId));
+  return Buffer.from(proposal.evidenceHash).toString("hex");
+}
+
 // Compile-time check that this file implements ChainClient from shared/types.ts.
-({ proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState }) satisfies ChainClient;
+({
+  proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState, addPayeeForWallet, getProposalEvidenceHash,
+}) satisfies ChainClient;

@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useState } from "react";
-import type { Request as CosignRequest, VerificationLine } from "../../../../shared/types.ts";
+import type { EvidenceCheck, Request as CosignRequest, VerificationLine } from "../../../../shared/types.ts";
 import { PaymentTicket } from "@/components/payment-ticket";
 import { CheckIcon, CrossIcon } from "@/components/icons";
 import { ResultPill } from "@/components/result";
-import { Button, LoadFailed, PageTitle, Panel, Pill, Skeleton, Usd, Waiting } from "@/components/ui";
-import { getRequest } from "@/lib/api";
-import { formatPercent } from "@/lib/format";
-import { REQUEST_TYPE_LABEL } from "@/lib/labels";
+import { Button, ErrorBanner, LoadFailed, PageTitle, Panel, Pill, Skeleton, Usd } from "@/components/ui";
+import { getRequest, verifyEvidence } from "@/lib/api";
+import { formatPercent, formatUsd } from "@/lib/format";
+import { REQUEST_TYPE_LABEL, counterpartyLabel, loanCheckLabel } from "@/lib/labels";
 import { disputeNotice } from "@/lib/notice";
 import { useLoad } from "@/lib/use-load";
 
@@ -46,13 +46,10 @@ function LineResult({ line, request }: { line: VerificationLine; request: Cosign
     );
   }
   return (
-    <span className="flex flex-wrap items-center gap-2">
-      <Pill tone="dispute">
-        <CrossIcon className="h-3.5 w-3.5" />
-        Dispute
-      </Pill>
-      <Waiting field="VerificationLine disputed_usd" />
-    </span>
+    <Pill tone="dispute">
+      <CrossIcon className="h-3.5 w-3.5" />
+      Dispute
+    </Pill>
   );
 }
 
@@ -107,13 +104,28 @@ function Totals({ request }: { request: CosignRequest }) {
 
 const TH = "whitespace-nowrap py-2 pr-3 font-normal";
 
+/** One plain sentence per failed loan check, e.g. "only $3,000,000 of the commitment is left". */
+function loanFailureReason(line: VerificationLine, request: CosignRequest): string {
+  const check = line.instrument_id.split(":").pop();
+  if (check === "REMAINING_COMMITMENT") {
+    return `The draw is ${formatUsd(request.amount_requested_usd)}, but only ${formatUsd(line.market_value)} of the commitment is left (clause ${line.clause}).`;
+  }
+  if (check === "MIN_DRAW") return `The draw is below the ${formatUsd(line.market_value)} minimum (clause ${line.clause}).`;
+  return `${loanCheckLabel(line.instrument_id)} check failed (clause ${line.clause}).`;
+}
+
 /** Loan draws arrive as the same line shape as margin calls, with the haircut fields unused. */
 function LoanDrawLines({ request }: { request: CosignRequest }) {
+  const failed = request.verification.lines.filter((l) => !l.ok);
   return (
     <>
-      <p className="mb-2">
-        <Waiting field="loan draw checks" />
-      </p>
+      {failed.length > 0 ? (
+        <div className="mb-3 rounded-control border border-dispute bg-dispute-bg px-3 py-2 text-dispute">
+          {failed.map((l, i) => (
+            <p key={i} className="font-medium">{loanFailureReason(l, request)}</p>
+          ))}
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-left">
           <thead>
@@ -127,8 +139,10 @@ function LoanDrawLines({ request }: { request: CosignRequest }) {
           <tbody>
             {request.verification.lines.map((line, i) => (
               <tr key={i} className="border-b border-hairline align-middle last:border-b-0">
-                <th scope="row" className="max-w-[320px] break-all py-3 pr-4 font-mono font-medium">{line.instrument_id}</th>
-                <td className="py-3 pr-4 text-right"><Usd amount={line.market_value} /></td>
+                <th scope="row" className="max-w-[320px] py-3 pr-4 font-medium">{loanCheckLabel(line.instrument_id)}</th>
+                <td className="py-3 pr-4 text-right">
+                  {line.market_value > 0 ? <Usd amount={line.market_value} /> : <span className="text-muted">—</span>}
+                </td>
                 <td className="whitespace-nowrap py-3 pr-4">Clause {line.clause}</td>
                 <td className="py-3"><LineResult line={line} request={request} /></td>
               </tr>
@@ -156,7 +170,7 @@ function Reconciliation({ request }: { request: CosignRequest }) {
                 <th scope="col" className={`${TH} text-right`}>Market value</th>
                 <th scope="col" className={TH}>Broker&apos;s haircut</th>
                 <th scope="col" className={TH}>Agreed haircut</th>
-                <th scope="col" className={TH}>Required margin</th>
+                <th scope="col" className={`${TH} text-right`}>Required margin</th>
                 <th scope="col" className="whitespace-nowrap py-2 font-normal">Result</th>
               </tr>
             </thead>
@@ -172,15 +186,16 @@ function Reconciliation({ request }: { request: CosignRequest }) {
                     <Haircut fraction={line.haircut_agreed} tone="ink" />
                     <span className="mt-1 block whitespace-nowrap text-small text-muted">Clause {line.clause}</span>
                   </td>
-                  <td className="w-[150px] py-3 pr-3"><Waiting field="required_usd" /></td>
+                  <td className="py-3 pr-3 text-right">
+                    {/* Display only: the engine's verified total is the number that gets paid. */}
+                    <Usd amount={Math.round(line.market_value * line.haircut_agreed)} />
+                  </td>
                   <td className="py-3"><LineResult line={line} request={request} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ) : request.type === "loan_draw" ? (
-        <Waiting field="loan draw checks" />
       ) : (
         <p className="text-muted">Cosign has no line items to recompute for this kind of request.</p>
       )}
@@ -237,6 +252,83 @@ function Fingerprint({ hash }: { hash: string }) {
         </div>
       ) : null}
       <p className="min-w-0 break-all font-mono text-small">{hash}</p>
+    </div>
+  );
+}
+
+function HashRow({ label, hash, expected }: { label: string; hash: string | null; expected: string }) {
+  const same = hash === expected;
+  return (
+    <div className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline py-2 last:border-b-0">
+      <span className="text-small text-muted">{label}</span>
+      <span className="min-w-0 truncate font-mono text-small" title={hash ?? undefined}>
+        {hash ?? "No proposal on-chain yet"}
+      </span>
+      {hash === null ? (
+        <span />
+      ) : same ? (
+        <span className="text-agree"><CheckIcon className="h-4 w-4" /><span className="sr-only">matches</span></span>
+      ) : (
+        <span className="text-dispute"><CrossIcon className="h-4 w-4" /><span className="sr-only">differs</span></span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Verify evidence" (BUILD_PLAN §7.3): the server recomputes the hash from the email, fixtures and engine,
+ * and reads the one stored in the proposal on Solana. All three must be equal.
+ */
+function VerifyEvidence({ request }: { request: CosignRequest }) {
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<EvidenceCheck | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  async function run() {
+    setPending(true);
+    setFailed(false);
+    setResult(null);
+    try {
+      setResult(await verifyEvidence(request.id));
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="secondary" pending={pending} disabled={pending} onClick={run}>
+          {pending ? "Recomputing..." : "Verify evidence"}
+        </Button>
+        {result ? (
+          result.match ? (
+            <Pill tone="agree">
+              <CheckIcon className="h-3.5 w-3.5" />
+              {result.on_chain_hash ? "Matches the on-chain record" : "Matches (not proposed yet)"}
+            </Pill>
+          ) : (
+            <Pill tone="dispute">
+              <CrossIcon className="h-3.5 w-3.5" />
+              Evidence changed
+            </Pill>
+          )
+        ) : null}
+      </div>
+      {result ? (
+        <div aria-live="polite" className="mt-3 rounded-control border border-hairline bg-ground px-3 py-1">
+          <HashRow label="Recomputed now" hash={result.recomputed_hash} expected={result.recomputed_hash} />
+          <HashRow label="Shown on this page" hash={result.stored_hash} expected={result.recomputed_hash} />
+          <HashRow label="Stored on Solana" hash={result.on_chain_hash} expected={result.recomputed_hash} />
+        </div>
+      ) : null}
+      {failed ? (
+        <div className="mt-3">
+          <ErrorBanner message="Couldn't verify the evidence right now. Try again." />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -307,7 +399,7 @@ export default function RequestDetailPage() {
           <div className="flex flex-wrap items-center gap-x-3">
             <div className="min-w-0 max-w-full [overflow-wrap:anywhere]">
               <PageTitle>
-                {REQUEST_TYPE_LABEL[request.type]} from {request.counterparty_id}
+                {REQUEST_TYPE_LABEL[request.type]} from {counterpartyLabel(request.counterparty_id)}
               </PageTitle>
             </div>
             <ResultPill verification={request.verification} />
@@ -317,11 +409,6 @@ export default function RequestDetailPage() {
           <div className={`mt-3 ${TWO_COLUMNS}`}>
             <Panel className="min-w-0 animate-rise">
               <Section title="Request">
-                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-control border border-dashed border-strong bg-ground px-3 py-2">
-                  <Waiting field="email (from, subject, received_at, body)" />
-                  <Waiting field="due" />
-                  <Waiting field="parser flags" />
-                </div>
                 <p className="text-small text-muted">Sentences the parser quoted from the email</p>
                 {request.quotes.length > 0 ? (
                   <ul className="mt-1 max-h-56 space-y-1.5 overflow-y-auto">
@@ -342,13 +429,12 @@ export default function RequestDetailPage() {
                 <DisputeNotice request={request} />
               </Section>
               <Section title="Evidence fingerprint">
+                <p className="mb-2 text-small text-muted">
+                  SHA-256 of the parsed request, source email, inputs and result. It is stored on-chain with the proposal.
+                </p>
                 <Fingerprint hash={request.evidence_hash} />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <Button variant="secondary" disabled>
-                    Verify evidence
-                  </Button>
-                  <Waiting field="route that recomputes the evidence hash" />
-                </div>
+                {/* Keyed on the proposal so a stale result clears once the payment is proposed. */}
+                <VerifyEvidence key={request.proposal?.id ?? "none"} request={request} />
               </Section>
             </Panel>
 

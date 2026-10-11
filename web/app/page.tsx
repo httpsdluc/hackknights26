@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { ArrowRightIcon } from "@/components/icons";
 import { ProposalPill, ResultPill } from "@/components/result";
-import { LoadFailed, PageTitle, Panel, Pill, Skeleton, Usd, Waiting } from "@/components/ui";
+import { LoadFailed, PageTitle, Panel, Pill, Skeleton, Usd } from "@/components/ui";
 import { listRequests } from "@/lib/api";
-import { REQUEST_TYPE_LABEL } from "@/lib/labels";
+import { REQUEST_TYPE_LABEL, counterpartyLabel } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
 
 const COLUMNS = "grid grid-cols-[190px_minmax(0,1fr)_140px_140px_250px_20px] items-center gap-4 px-5";
@@ -90,10 +90,9 @@ export default function InboxPage() {
                       <Pill tone="neutral">{REQUEST_TYPE_LABEL[r.type]}</Pill>
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="max-w-full truncate font-mono font-medium text-action group-hover:text-action-hover">
-                        {r.counterparty_id}
+                      <span className="max-w-full truncate font-medium text-action group-hover:text-action-hover">
+                        {counterpartyLabel(r.counterparty_id)}
                       </span>
-                      <Waiting field="counterparty_name" />
                     </span>
                     <Usd amount={r.amount_requested_usd} className="text-right text-muted" />
                     <Usd amount={r.verification.verified_usd} className="text-right text-heading font-medium" />
