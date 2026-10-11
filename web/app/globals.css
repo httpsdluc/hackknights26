@@ -1,17 +1,147 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme inline {
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-plex-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+@theme {
+  /* Design tokens. Tailwind's default palette, radii and type scale are switched off on purpose. */
+  --color-*: initial;
+  --color-ground: #f2f3f5;
+  --color-paper: #ffffff;
+  --color-ink: #1b1f27;
+  --color-muted: #545b66;
+  --color-hairline: #e1e4e9;
+  --color-strong: #c4cad3;
+  --color-action: #1f3fbf;
+  --color-action-hover: #162e8c;
+  --color-agree: #1e5a3f;
+  --color-agree-bg: #d6ebdf;
+  --color-dispute: #9a2e24;
+  --color-dispute-bg: #f5deda;
+  --color-held: #6e4a0f;
+  --color-held-bg: #f3e4c4;
+  --color-quote: #ffe58a;
+
+  --radius-*: initial;
+  --radius-pill: 4px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+
+  --text-*: initial;
+  --text-fine: 13px;
+  --text-fine--line-height: 18px;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-heading: 20px;
+  --text-heading--line-height: 28px;
+  --text-title: 36px;
+  --text-title--line-height: 44px;
+  --text-amount: 48px;
+  --text-amount--line-height: 56px;
+  --text-code-xl: 64px;
+  --text-code-xl--line-height: 72px;
+
+  --shadow-*: initial;
+  /* Soft, ink-tinted elevation. Two levels only: panels, and the thing you act on. */
+  --shadow-panel: 0 1px 2px rgb(27 31 39 / 0.04), 0 10px 28px -16px rgb(27 31 39 / 0.14);
+  --shadow-raised: 0 1px 2px rgb(27 31 39 / 0.06), 0 18px 40px -18px rgb(27 31 39 / 0.22);
+  --shadow-button: 0 1px 2px rgb(22 46 140 / 0.25);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --animate-rise: rise 360ms var(--ease-out-soft) both;
+  --animate-draw: draw 520ms var(--ease-out-soft) both;
+  --animate-pop: pop 320ms var(--ease-out-soft) both;
+  --animate-slam: slam 420ms var(--ease-out-soft) both;
+  --animate-flash: flash 900ms ease-out both;
+  --animate-shake: shake 320ms ease-out both;
+  --animate-breathe: breathe 1.6s ease-in-out infinite;
+  --animate-spin: spin 700ms linear infinite;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes draw {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes slam {
+    from { opacity: 0; transform: scale(1.12); letter-spacing: 0.04em; }
+    to { opacity: 1; transform: none; letter-spacing: 0; }
+  }
+  @keyframes flash {
+    from { background-color: var(--color-dispute-bg); }
+    to { background-color: var(--color-paper); }
+  }
+  @keyframes shake {
+    0%, 100% { transform: none; }
+    25% { transform: translateX(-4px); }
+    60% { transform: translateX(3px); }
+    85% { transform: translateX(-1px); }
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-quote);
+  color: var(--color-ink);
+}
+
+a,
+button:not(:disabled),
+select:not(:disabled),
+label[for],
+input[type="checkbox"]:not(:disabled) {
+  cursor: pointer;
+}
+
+/* Hazard edge for the armed attack panel. */
+.hazard-edge {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--color-dispute) 0 10px,
+    var(--color-dispute-bg) 10px 20px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* In the base layer so a utility (e.g. an inset ring on table rows) can override the offset. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-action);
+    outline-offset: 2px;
+  }
 }

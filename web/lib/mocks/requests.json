@@ -1,0 +1,44 @@
+[
+  {
+    "id": "req_margin_1",
+    "type": "margin_call",
+    "counterparty_id": "pbx",
+    "amount_requested_usd": 2400000,
+    "quotes": [
+      "Prime Broker X hereby issues a margin call in the amount of $2,400,000.",
+      "Following our periodic review, Bond A haircut 15% now applies.",
+      "Loan B haircut 15% is unchanged."
+    ],
+    "verification": {
+      "status": "partial",
+      "verified_usd": 1900000,
+      "disputed_usd": 500000,
+      "lines": [
+        { "instrument_id": "BOND_A", "market_value": 10000000, "haircut_claimed": 0.15, "haircut_agreed": 0.10, "clause": "4.2", "ok": false },
+        { "instrument_id": "LOAN_B", "market_value": 6000000, "haircut_claimed": 0.15, "haircut_agreed": 0.15, "clause": "4.3", "ok": true }
+      ]
+    },
+    "evidence_hash": "9f2c41d7a8b35e60c1f4d2987a6be3051c8d7f24e9a0b6c3d5e1f70892ab4c6d",
+    "proposal": null
+  },
+  {
+    "id": "req_loan_1",
+    "type": "loan_draw",
+    "counterparty_id": "aby",
+    "amount_requested_usd": 5000000,
+    "quotes": ["Agent Bank Y requests that you fund a draw of $5,000,000."],
+    "verification": { "status": "rejected", "verified_usd": 0, "disputed_usd": 5000000, "lines": [] },
+    "evidence_hash": "3b7e09c5d1a2f48e6b0c9d7a5e3f1b2c4d6e8f0a1b3c5d7e9f2a4b6c8d0e1f3a",
+    "proposal": null
+  },
+  {
+    "id": "req_phish_1",
+    "type": "payment_instruction_change",
+    "counterparty_id": "pbx",
+    "amount_requested_usd": 2000000,
+    "quotes": ["URGENT: our bank details changed, pay $2,000,000 to this new wallet."],
+    "verification": { "status": "rejected", "verified_usd": 0, "disputed_usd": 2000000, "lines": [] },
+    "evidence_hash": "c4a1e7b93d5f2086a9c3e1d7b5f4a2c8e6d0b9a7c5e3f1d2b4a6c8e0f2d4b6a8",
+    "proposal": null
+  }
+]

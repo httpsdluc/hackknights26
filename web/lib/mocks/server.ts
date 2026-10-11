@@ -1,0 +1,116 @@
+// In-browser stand-in for the server, used when NEXT_PUBLIC_USE_MOCKS=true.
+// Shapes are CONTRACT.md §4 only. State lives in sessionStorage so a reload keeps the demo's place.
+import type { ErrorCode, ProposeResult, Request as CosignRequest } from "../../../shared/types.ts";
+import seed from "./requests.json";
+
+interface MockState {
+  requests: CosignRequest[];
+  approvers: Record<string, string[]>;
+  agentEnabled: boolean;
+  nonce: number;
+}
+
+const KEY = "cosign-mock-state-v1";
+const SIGNERS = ["approver1", "approver2"];
+const LARGE_AMOUNT_USD = 1_000_000;
+
+function load(): MockState {
+  try {
+    const raw = sessionStorage.getItem(KEY);
+    if (raw) return JSON.parse(raw) as MockState;
+  } catch {
+    // fall through to a fresh state
+  }
+  return { requests: structuredClone(seed) as CosignRequest[], approvers: {}, agentEnabled: true, nonce: 0 };
+}
+
+function save(state: MockState) {
+  try {
+    sessionStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    // storage unavailable: state just won't survive a reload
+  }
+}
+
+const wait = () => new Promise((r) => setTimeout(r, 500));
+const fail = (error_code: ErrorCode): ProposeResult => ({ ok: false, error_code });
+
+function mockTx(state: MockState): string {
+  state.nonce += 1;
+  return `MOCK${String(state.nonce).padStart(4, "0")}${"x".repeat(40)}`;
+}
+
+export async function mockListRequests(): Promise<CosignRequest[]> {
+  await wait();
+  return load().requests;
+}
+
+export async function mockGetRequest(id: string): Promise<CosignRequest | null> {
+  await wait();
+  return load().requests.find((r) => r.id === id) ?? null;
+}
+
+export async function mockPropose(requestId: string): Promise<ProposeResult> {
+  await wait();
+  const state = load();
+  const req = state.requests.find((r) => r.id === requestId);
+  if (!req) return fail("Unauthorized");
+  if (req.proposal) return { ok: true, tx: mockTx(state), proposal_id: req.proposal.id };
+  if (req.verification.status === "rejected") return fail("Unauthorized");
+  if (!state.agentEnabled) return fail("AgentDisabled");
+  const id = `mock_prop_${state.nonce + 1}`;
+  req.proposal = {
+    id,
+    approvals: 0,
+    required: req.verification.verified_usd >= LARGE_AMOUNT_USD ? 2 : 1,
+    executed: false,
+    tx: null,
+  };
+  state.approvers[id] = [];
+  const tx = mockTx(state);
+  save(state);
+  return { ok: true, tx, proposal_id: id };
+}
+
+export async function mockApprove(proposalId: string, approver: string): Promise<ProposeResult> {
+  await wait();
+  const state = load();
+  const req = state.requests.find((r) => r.proposal?.id === proposalId);
+  if (!req?.proposal || !SIGNERS.includes(approver)) return fail("Unauthorized");
+  if (req.proposal.executed) return fail("AlreadyExecuted");
+  const signed = (state.approvers[proposalId] ??= []);
+  if (signed.includes(approver)) return fail("AlreadyApproved");
+  signed.push(approver);
+  req.proposal.approvals = signed.length;
+  const tx = mockTx(state);
+  save(state);
+  return { ok: true, tx, proposal_id: proposalId };
+}
+
+export async function mockExecute(proposalId: string): Promise<ProposeResult> {
+  await wait();
+  const state = load();
+  const req = state.requests.find((r) => r.proposal?.id === proposalId);
+  if (!req?.proposal) return fail("Unauthorized");
+  if (req.proposal.executed) return fail("AlreadyExecuted");
+  if (req.proposal.approvals < req.proposal.required) return fail("NotEnoughApprovals");
+  const tx = mockTx(state);
+  req.proposal.executed = true;
+  req.proposal.tx = tx;
+  save(state);
+  return { ok: true, tx, proposal_id: proposalId };
+}
+
+export async function mockKillSwitch(enabled: boolean): Promise<ProposeResult> {
+  await wait();
+  const state = load();
+  state.agentEnabled = enabled;
+  const tx = mockTx(state);
+  save(state);
+  return { ok: true, tx, proposal_id: "" };
+}
+
+export async function mockCompromisedAgent(): Promise<ProposeResult> {
+  await wait();
+  return fail(load().agentEnabled ? "PayeeNotAllowed" : "AgentDisabled");
+}
