@@ -1,0 +1,5 @@
+{
+  "_note": "Story 3. The wallet and amount the phishing email asks for. The wallet must NOT be in registry.json.",
+  "phishing_wallet": "AU4NQcZ8yEFKo5bx6BeBn89MJuVFPuTiys64FF5xZfna",
+  "amount_usd": 2000000
+}

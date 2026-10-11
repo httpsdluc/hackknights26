@@ -5,6 +5,7 @@ import positions from "../../fixtures/positions.json" with { type: "json" };
 import margin from "../../fixtures/margin_agreement.json" with { type: "json" };
 import credit from "../../fixtures/credit_agreement.json" with { type: "json" };
 import registry from "../../fixtures/registry.json" with { type: "json" };
+import attack from "../../fixtures/attack.json" with { type: "json" };
 
 const email = (name: string) => readFileSync(new URL(`../../fixtures/emails/${name}`, import.meta.url), "utf8");
 
@@ -41,6 +42,13 @@ describe("fixtures (BUILD_PLAN §7.4)", () => {
     const phishingWallet = email("phishing.txt").match(/new wallet (\w+)/)?.[1];
     expect(phishingWallet).toBeTruthy();
     expect(JSON.stringify(registry)).not.toContain(phishingWallet);
+  });
+
+  it("attack matches the phishing email and is not a registered payee", () => {
+    const phish = email("phishing.txt");
+    expect(phish.match(/new wallet (\w+)/)?.[1]).toBe(attack.phishing_wallet);
+    expect(attack.amount_usd).toBe(2_000_000);
+    expect(JSON.stringify(registry)).not.toContain(attack.phishing_wallet);
   });
 
   it("emails", () => {
