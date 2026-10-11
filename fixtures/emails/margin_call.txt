@@ -1,0 +1,14 @@
+From: margin.desk@primebrokerx.example
+To: ops@fund.example
+Subject: Margin Call - Due Today 5:00 PM ET
+
+Dear Client,
+
+Prime Broker X hereby issues a margin call in the amount of $2,400,000.
+Payment is due by 5:00 PM ET on October 10, 2026.
+Following our periodic review, Bond A haircut 15% now applies.
+Loan B haircut 15% is unchanged.
+Please remit to your usual settlement account on file.
+
+Regards,
+Margin Desk, Prime Broker X

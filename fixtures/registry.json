@@ -1,0 +1,17 @@
+{
+  "_note": "Payee wallets are placeholder devnet pubkeys. The phishing wallet is deliberately NOT here.",
+  "counterparties": [
+    {
+      "id": "pbx",
+      "name": "Prime Broker X",
+      "aliases": ["PBX", "Prime Broker X LLC", "Prime Broker X Margin Desk"],
+      "wallet": "43utK3Q6iqC9MxkrvL9RRwd7v2F9ApxoqTi98iztEa2e"
+    },
+    {
+      "id": "aby",
+      "name": "Agent Bank Y",
+      "aliases": ["ABY", "Agent Bank Y N.A.", "Agent Bank Y Loan Agency"],
+      "wallet": "BrDqpW74UceVDvwxQTxdAgxrii8rkyEWvoVGzTKaR3YU"
+    }
+  ]
+}
