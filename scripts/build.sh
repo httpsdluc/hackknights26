@@ -9,4 +9,5 @@ anchor build --no-idl -- --tools-version v1.52
 mkdir -p target/idl target/types
 anchor idl build -o target/idl/policy_vault.json -t target/types/policy_vault.ts
 cp target/idl/policy_vault.json chain/idl.json
-echo "built; IDL copied to chain/idl.json"
+cp target/types/policy_vault.ts chain/policy_vault_types.ts
+echo "built; IDL copied to chain/idl.json (+ chain/policy_vault_types.ts)"
