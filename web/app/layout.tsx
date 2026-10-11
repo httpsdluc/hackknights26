@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Serif } from "next/font/google";
 import Link from "next/link";
+import { Logo } from "@/components/icons";
+import { Nav } from "@/components/nav";
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex-sans" });
@@ -12,12 +14,6 @@ export const metadata: Metadata = {
   description: "Verify-then-cosign payments for credit funds",
 };
 
-const NAV = [
-  { href: "/", label: "Inbox" },
-  { href: "/vault", label: "Vault" },
-  { href: "/attack", label: "Attack lab" },
-];
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -26,25 +22,19 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${plexSans.variable} ${plexSerif.variable} ${plexMono.variable}`}>
       <body className="min-h-screen antialiased">
-        <header className="border-b border-hairline bg-paper">
-          <div className="mx-auto flex max-w-[1280px] items-center gap-6 px-6">
-            <Link href="/" className="inline-flex min-h-11 items-center text-heading font-semibold text-ink">
+        <header className="sticky top-0 z-10 border-b border-hairline bg-paper/85 backdrop-blur-md">
+          <div className="mx-auto flex max-w-[1280px] items-center gap-6 overflow-x-auto whitespace-nowrap px-6">
+            <Link href="/" className="inline-flex min-h-14 items-center gap-2.5 text-heading font-semibold tracking-[-0.01em] text-ink">
+              <Logo />
               Cosign
             </Link>
-            <nav aria-label="Main" className="flex gap-1">
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="inline-flex min-h-11 items-center rounded-control px-3 font-medium text-action hover:text-action-hover"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            <p className="ml-auto text-small text-muted">
+            <Nav />
+            <p className="ml-auto flex items-center gap-2 text-small text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-pill border border-hairline bg-paper px-2 py-0.5 font-medium text-ink">
+                <span aria-hidden="true" className="h-2 w-2 animate-breathe rounded-full bg-agree" />
+                {process.env.NEXT_PUBLIC_USE_MOCKS === "true" ? "Mock API" : "Solana devnet"}
+              </span>
               Simulated counterparty data
-              {process.env.NEXT_PUBLIC_USE_MOCKS === "true" ? " · mock API" : ""}
             </p>
           </div>
         </header>

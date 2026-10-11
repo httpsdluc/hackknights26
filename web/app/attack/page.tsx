@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { ArrowRightIcon, BotIcon, CrossIcon, ExternalIcon, ShieldIcon, WalletIcon } from "@/components/icons";
 import { Button, ErrorBanner, LoadFailed, PageTitle, Panel, Pill, Skeleton } from "@/components/ui";
 import { fireCompromisedAgent, listRequests } from "@/lib/api";
 import { errorSentence } from "@/lib/errors";
@@ -9,15 +10,44 @@ import { useLoad } from "@/lib/use-load";
 
 type Outcome = { kind: "blocked"; code: string } | { kind: "accepted"; tx: string } | { kind: "failed" };
 
+function Node({ icon, label, tone }: { icon: React.ReactNode; label: string; tone: "idle" | "bad" | "guard" }) {
+  const style = {
+    idle: "border-strong bg-paper text-muted",
+    bad: "border-dispute bg-dispute-bg text-dispute",
+    guard: "border-action bg-paper text-action",
+  }[tone];
+  return (
+    <div className={`flex min-w-0 items-center gap-2 rounded-control border px-3 py-2 text-small font-medium transition-colors duration-300 ${style}`}>
+      {icon}
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+/** Agent → vault program → wallet. Shows where the payment stopped. */
+function Path({ compromised, outcome }: { compromised: boolean; outcome: Outcome | null }) {
+  const blocked = outcome?.kind === "blocked";
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2" aria-hidden="true">
+      <Node icon={<BotIcon />} label={compromised ? "Compromised agent" : "Agent"} tone={compromised ? "bad" : "idle"} />
+      <ArrowRightIcon className={`h-5 w-5 ${outcome ? "text-ink" : "text-strong"}`} />
+      <Node icon={<ShieldIcon />} label="Vault program" tone={outcome ? "guard" : "idle"} />
+      {blocked ? <CrossIcon className="h-5 w-5 animate-pop text-dispute" /> : <ArrowRightIcon className="h-5 w-5 text-strong" />}
+      <Node icon={<WalletIcon />} label="Attacker's wallet" tone="idle" />
+    </div>
+  );
+}
+
 export default function AttackLabPage() {
   const { state, retry } = useLoad(listRequests);
   const [compromised, setCompromised] = useState(false);
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [shot, setShot] = useState(0);
   const inFlight = useRef(false);
   const toggleId = useId();
 
-  // The phishing email is the request Cosign refuses to pay and that isn't a margin call or loan draw.
+  // The phishing email is the request that isn't a margin call or loan draw.
   const target =
     state.status === "ready"
       ? (state.data.find((r) => r.type === "payment_instruction_change") ?? state.data.find((r) => r.type === "other") ?? null)
@@ -34,6 +64,7 @@ export default function AttackLabPage() {
     } catch {
       setOutcome({ kind: "failed" });
     } finally {
+      setShot((n) => n + 1);
       inFlight.current = false;
       setPending(false);
     }
@@ -42,65 +73,87 @@ export default function AttackLabPage() {
   return (
     <>
       <PageTitle>Attack lab</PageTitle>
-      <div className="mt-4 grid grid-cols-[400px_minmax(0,1fr)] items-start gap-5">
-        <Panel className="p-5">
-          <h2 className="text-heading font-semibold">Simulate a hacked agent</h2>
-          <p className="mt-1 text-small text-muted">
-            With the switch on, the agent skips every check and proposes the phishing payment anyway. Only the vault
-            program on Solana can stop it.
-          </p>
+      <div className="mt-3 grid grid-cols-1 items-start gap-5 lg:grid-cols-[400px_minmax(0,1fr)]">
+        <Panel className={`overflow-hidden transition-colors duration-300 ${compromised ? "border-dispute" : ""}`}>
+          <div aria-hidden="true" className={`h-1.5 transition-opacity duration-300 ${compromised ? "hazard-edge opacity-100" : "opacity-0"}`} />
+          <div className="p-5 pt-3.5">
+            <h2 className="text-heading font-semibold">Simulate a hacked agent</h2>
+            <p className="mt-1 text-small text-muted">
+              With the switch on, the agent skips every check and proposes the phishing payment anyway. Only the vault
+              program on Solana can stop it.
+            </p>
 
-          <label htmlFor={toggleId} className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 font-medium">
-            <input
-              id={toggleId}
-              type="checkbox"
-              role="switch"
-              checked={compromised}
-              disabled={pending}
-              onChange={(e) => setCompromised(e.target.checked)}
-              className="h-6 w-6 accent-dispute"
-            />
-            Compromised agent
-            <Pill tone={compromised ? "dispute" : "neutral"}>{compromised ? "On" : "Off"}</Pill>
-          </label>
+            <label htmlFor={toggleId} className="mt-4 flex min-h-11 items-center gap-3 font-medium">
+              <span className="relative inline-flex h-7 w-12 shrink-0 items-center">
+                <input
+                  id={toggleId}
+                  type="checkbox"
+                  role="switch"
+                  checked={compromised}
+                  disabled={pending}
+                  onChange={(e) => setCompromised(e.target.checked)}
+                  className="peer absolute inset-0 h-full w-full appearance-none rounded-full border border-strong bg-ground transition-colors duration-200 checked:border-dispute checked:bg-dispute"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-1 h-5 w-5 rounded-full border border-strong bg-paper transition-transform duration-200 peer-checked:translate-x-5 peer-checked:border-paper"
+                />
+              </span>
+              Compromised agent
+              <Pill tone={compromised ? "dispute" : "neutral"}>{compromised ? "On" : "Off"}</Pill>
+            </label>
 
-          <div className="mt-3 border-t border-hairline pt-3 text-small">
-            <p className="text-muted">Phishing request</p>
-            {state.status === "loading" ? <Skeleton className="mt-1 h-5 w-48" /> : null}
-            {state.status === "error" ? <LoadFailed what="the requests" onRetry={retry} /> : null}
-            {state.status === "ready" && target ? (
-              <p>
-                {REQUEST_TYPE_LABEL[target.type]} · <span className="font-mono">{target.id}</span>
-              </p>
+            <div className="mt-3 border-t border-hairline pt-3 text-small">
+              <p className="text-muted">Phishing request</p>
+              {state.status === "loading" ? <Skeleton className="mt-1 h-5 w-48" /> : null}
+              {state.status === "error" ? <LoadFailed what="the requests" detail={state.detail} onRetry={retry} /> : null}
+              {state.status === "ready" && target ? (
+                <p className="break-all">
+                  {REQUEST_TYPE_LABEL[target.type]} · <span className="font-mono">{target.id}</span>
+                </p>
+              ) : null}
+              {state.status === "ready" && !target ? <p className="text-dispute">No phishing request is in the inbox.</p> : null}
+            </div>
+
+            <Button variant="danger" className="mt-4 w-full" disabled={!compromised || !target || pending} pending={pending} onClick={fire}>
+              {pending ? "Firing..." : "Fire phishing payment"}
+            </Button>
+            {!compromised ? (
+              <p className="mt-2 text-small text-muted">Turn on &quot;Compromised agent&quot; to arm this button.</p>
             ) : null}
-            {state.status === "ready" && !target ? <p className="text-dispute">No phishing request is in the inbox.</p> : null}
           </div>
-
-          <Button variant="danger" className="mt-4 w-full" disabled={!compromised || !target || pending} onClick={fire}>
-            {pending ? "Firing..." : "Fire phishing payment"}
-          </Button>
-          {!compromised ? (
-            <p className="mt-2 text-small text-muted">Turn on &quot;Compromised agent&quot; to arm this button.</p>
-          ) : null}
         </Panel>
 
-        <Panel className="flex min-h-[360px] flex-col justify-center p-8" >
-          <div aria-live="assertive">
+        <Panel
+          key={shot}
+          className={`flex min-h-[380px] min-w-0 flex-col gap-8 p-8 ${outcome?.kind === "blocked" ? "animate-flash border-dispute" : ""}`}
+        >
+          <Path compromised={compromised} outcome={outcome} />
+
+          <div aria-live="assertive" className="flex flex-1 flex-col justify-center">
             {outcome === null ? (
               <p className="text-muted">{pending ? "Waiting for the vault program..." : "The vault program's answer will show here."}</p>
             ) : null}
 
             {outcome?.kind === "blocked" ? (
               <>
-                <Pill tone="dispute">Blocked by rule</Pill>
-                <p className="mt-3 break-all font-mono text-code-xl font-medium text-dispute">{outcome.code}</p>
+                <div>
+                  <Pill tone="dispute">
+                    <CrossIcon className="h-3.5 w-3.5" />
+                    Blocked by rule
+                  </Pill>
+                </div>
+                <p className="mt-3 origin-left animate-slam break-all font-mono text-code-xl font-medium text-dispute">{outcome.code}</p>
                 {errorSentence(outcome.code) ? <p className="mt-2 text-heading">{errorSentence(outcome.code)}</p> : null}
+                <p className="mt-1 text-muted">No money moved. The agent&apos;s key alone can never release a payment.</p>
               </>
             ) : null}
 
             {outcome?.kind === "accepted" ? (
               <>
-                <Pill tone="held">Held for approval</Pill>
+                <div>
+                  <Pill tone="held">Held for approval</Pill>
+                </div>
                 <p className="mt-3 text-heading">
                   The vault accepted this proposal. It still can&apos;t be released without human approvals.
                 </p>
@@ -108,9 +161,11 @@ export default function AttackLabPage() {
                   href={explorerTxUrl(outcome.tx)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center font-medium text-action underline hover:text-action-hover"
+                  className="inline-flex min-h-11 items-center gap-1.5 font-medium text-action underline underline-offset-4 hover:text-action-hover"
                 >
-                  View transaction on Solana Explorer ↗
+                  View transaction on Solana Explorer
+                  <ExternalIcon className="h-3.5 w-3.5" />
+                  <span className="sr-only">(opens in a new tab)</span>
                 </a>
               </>
             ) : null}
