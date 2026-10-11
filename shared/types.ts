@@ -23,6 +23,12 @@ export const ERROR_CODES = [
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
+/** Not a chain error: the server's agent declined to propose (CONTRACT.md §3). */
+export const AGENT_REFUSED = "AgentRefused" as const;
+
+/** Any `error_code` an action result can carry. */
+export type ResultErrorCode = ErrorCode | typeof AGENT_REFUSED;
+
 // ---- Parser output (CONTRACT.md §6, BUILD_PLAN.md §7.1). No wallet/address field, ever. ----
 
 export type RequestType =
@@ -97,7 +103,30 @@ export interface Request {
 /** Propose, approve, execute and kill-switch. Always HTTP 200. */
 export type ProposeResult =
   | { ok: true; tx: string; proposal_id: string }
-  | { ok: false; error_code: ErrorCode };
+  | { ok: false; error_code: ResultErrorCode };
+
+/** POST /attack/add-phishing-payee. Always HTTP 200. */
+export type AddPayeeResult =
+  | {
+      ok: true;
+      /** null if the wallet was already a payee (nothing sent) */
+      tx: string | null;
+      /** unix timestamp in SECONDS; the payee can receive payments from then on */
+      active_after: number;
+    }
+  | { ok: false; error_code: ResultErrorCode };
+
+/** GET /requests/:id/evidence */
+export interface EvidenceCheck {
+  /** recomputed now from the source email, fixture files and engine */
+  recomputed_hash: string;
+  /** the hash on the request (GET /requests/:id evidence_hash) */
+  stored_hash: string;
+  /** read from the proposal account on Solana; null until a proposal exists */
+  on_chain_hash: string | null;
+  /** recomputed === stored, and === on_chain when there is one */
+  match: boolean;
+}
 
 export interface ApproveBody {
   approver: string;
@@ -172,4 +201,8 @@ export interface ChainClient {
   setAgentEnabled(enabled: boolean): Promise<{ tx: string }>;
   proposePaymentToWallet(args: ProposePaymentToWalletArgs): Promise<{ tx: string; proposalId: string }>;
   getVaultState(): Promise<VaultState>;
+  /** Story 3: a (phished) approver adds a wallet as a payee; the program starts its timelock. tx null if already a payee. */
+  addPayeeForWallet(args: { wallet: string; label: string }): Promise<{ tx: string | null; activeAfter: number }>;
+  /** The evidence hash stored in a proposal account, as 64 hex characters. */
+  getProposalEvidenceHash(proposalId: string): Promise<string>;
 }

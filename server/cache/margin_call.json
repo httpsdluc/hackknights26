@@ -2,7 +2,7 @@
   "request_type": "margin_call",
   "counterparty_name": "Prime Broker X",
   "amount_requested_usd": 2400000,
-  "due": "2026-10-10T17:00:00-04:00",
+  "due": "2026-10-11T17:00:00-04:00",
   "referenced_items": [
     {
       "instrument_id": "Bond A",
@@ -17,7 +17,7 @@
   "suspicious_instructions_detected": false,
   "quotes": [
     "Prime Broker X hereby issues a margin call in the amount of $2,400,000.",
-    "Payment is due by 5:00 PM ET on October 10, 2026.",
+    "Payment is due by 5:00 PM ET on October 11, 2026.",
     "Following our periodic review, Bond A haircut 15% now applies.",
     "Loan B haircut 15% is unchanged.",
     "Please remit to your usual settlement account on file."

@@ -1,6 +1,8 @@
 // Runtime check that a response has the shape CONTRACT.md §4 promises. A mismatch is reported
 // by field name instead of being papered over, so the owning teammate can be told exactly what differs.
 import type {
+  AddPayeeResult,
+  EvidenceCheck,
   ProposeResult,
   Request as CosignRequest,
   RequestType,
@@ -127,4 +129,29 @@ export function checkVaultState(v: unknown): VaultState {
   num(obj(s.balances, `${path}.balances`), "vault_usd", `${path}.balances`);
   num(s, "spent_today_usd", path);
   return v as VaultState;
+}
+
+export function checkAddPayeeResult(v: unknown): AddPayeeResult {
+  const path = "AddPayeeResult";
+  const r = obj(v, path);
+  bool(r, "ok", path);
+  if (r.ok) {
+    if (r.tx !== null && typeof r.tx !== "string") throw new ContractError(`${path}.tx`, "a string or null");
+    num(r, "active_after", path);
+  } else {
+    str(r, "error_code", path);
+  }
+  return v as AddPayeeResult;
+}
+
+export function checkEvidenceCheck(v: unknown): EvidenceCheck {
+  const path = "EvidenceCheck";
+  const r = obj(v, path);
+  str(r, "recomputed_hash", path);
+  str(r, "stored_hash", path);
+  if (r.on_chain_hash !== null && typeof r.on_chain_hash !== "string") {
+    throw new ContractError(`${path}.on_chain_hash`, "a string or null");
+  }
+  bool(r, "match", path);
+  return v as EvidenceCheck;
 }

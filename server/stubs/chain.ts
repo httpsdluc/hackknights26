@@ -20,29 +20,34 @@ const fakeTx = () => "STUB_" + randomBytes(32).toString("hex");
 let agentEnabled = true;
 let paidOut = 0;
 let nonce = 0;
-const proposals = new Map<string, { wallet: string; amountUsd: number; approvals: Set<string>; executed: boolean }>();
+const proposals = new Map<string, { wallet: string; amountUsd: number; evidenceHash: string; approvals: Set<string>; executed: boolean }>();
+/** Payees added at runtime (Story 3 phished approver): wallet → label + active_after (unix seconds). */
+const addedPayees = new Map<string, { label: string; activeAfter: number }>();
+const TIMELOCK_SECS = 60;
 
 function registry(): { counterparties: { id: string; name: string; wallet?: string }[] } {
   return readFixtureJson("registry.json");
 }
 
-function propose(wallet: string, amountUsd: number) {
+function propose(wallet: string, amountUsd: number, evidenceHash: string) {
   if (!agentEnabled) fail("AgentDisabled");
-  if (!registry().counterparties.some((c) => c.wallet === wallet)) fail("PayeeNotAllowed");
+  const added = addedPayees.get(wallet);
+  if (!registry().counterparties.some((c) => c.wallet === wallet) && !added) fail("PayeeNotAllowed");
+  if (added && Date.now() / 1000 < added.activeAfter) fail("PayeeTimelocked");
   if (amountUsd > PER_TX_LIMIT) fail("OverPerTxLimit");
   const proposalId = `stub_prop_${++nonce}`;
-  proposals.set(proposalId, { wallet, amountUsd, approvals: new Set(), executed: false });
+  proposals.set(proposalId, { wallet, amountUsd, evidenceHash, approvals: new Set(), executed: false });
   return { tx: fakeTx(), proposalId };
 }
 
 export async function proposePayment(args: ProposePaymentArgs): Promise<{ tx: string; proposalId: string }> {
   const cp = registry().counterparties.find((c) => c.id === args.counterpartyId);
   if (!cp?.wallet) return fail("PayeeNotAllowed");
-  return propose(cp.wallet, args.amountUsd);
+  return propose(cp.wallet, args.amountUsd, args.evidenceHash);
 }
 
 export async function proposePaymentToWallet(args: ProposePaymentToWalletArgs): Promise<{ tx: string; proposalId: string }> {
-  return propose(args.wallet, args.amountUsd);
+  return propose(args.wallet, args.amountUsd, args.evidenceHash);
 }
 
 export async function approve(proposalId: string, approverName: string): Promise<{ tx: string }> {
@@ -77,18 +82,41 @@ export async function getVaultState(): Promise<VaultState> {
       approvals_required_small: 1,
       payee_timelock_secs: 60,
     },
-    payees: registry().counterparties.map((c) => ({
-      counterparty_id: c.id,
-      label: c.name,
-      wallet: c.wallet ?? null,
-      per_tx_limit_usd: PER_TX_LIMIT,
-      active_after: 0,
-    })),
+    payees: [
+      ...registry().counterparties.map((c) => ({
+        counterparty_id: c.id,
+        label: c.name,
+        wallet: c.wallet ?? null,
+        per_tx_limit_usd: PER_TX_LIMIT,
+        active_after: 0,
+      })),
+      ...[...addedPayees].map(([wallet, p]) => ({
+        counterparty_id: null,
+        label: p.label,
+        wallet,
+        per_tx_limit_usd: PER_TX_LIMIT,
+        active_after: p.activeAfter,
+      })),
+    ],
     balances: { vault_usd: 10_000_000 - paidOut },
     spent_today_usd: 0,
   };
 }
 
+export async function addPayeeForWallet(args: { wallet: string; label: string }): Promise<{ tx: string | null; activeAfter: number }> {
+  const existing = addedPayees.get(args.wallet);
+  if (existing) return { tx: null, activeAfter: existing.activeAfter };
+  const activeAfter = Math.floor(Date.now() / 1000) + TIMELOCK_SECS;
+  addedPayees.set(args.wallet, { label: args.label, activeAfter });
+  return { tx: fakeTx(), activeAfter };
+}
+
+export async function getProposalEvidenceHash(proposalId: string): Promise<string> {
+  return (proposals.get(proposalId) ?? fail("Unauthorized")).evidenceHash;
+}
+
 // Compile-time check that this stub matches the contract's ChainClient.
-const _contract: ChainClient = { proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState };
+const _contract: ChainClient = {
+  proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState, addPayeeForWallet, getProposalEvidenceHash,
+};
 void _contract;

@@ -1,12 +1,31 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRightIcon, BotIcon, CrossIcon, ExternalIcon, ShieldIcon, WalletIcon } from "@/components/icons";
 import { Button, ErrorBanner, LoadFailed, PageTitle, Panel, Pill, Skeleton } from "@/components/ui";
-import { fireCompromisedAgent, listRequests } from "@/lib/api";
+import { addPhishingPayee, fireCompromisedAgent, listRequests } from "@/lib/api";
 import { errorSentence } from "@/lib/errors";
 import { explorerTxUrl, REQUEST_TYPE_LABEL } from "@/lib/labels";
 import { useLoad } from "@/lib/use-load";
+
+// The toggle survives a trip to the Vault page (kill switch) and back. Per-tab convenience only.
+const COMPROMISED_KEY = "cosign-attack-compromised";
+
+/** mm:ss until a unix-seconds time, ticking every second; null once it has passed. */
+function useCountdown(untilSecs: number | null): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (untilSecs === null) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [untilSecs]);
+  if (untilSecs === null) return null;
+  const left = Math.ceil(untilSecs - now / 1000);
+  if (left <= 0) return null;
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+}
+
+type Added = { kind: "added"; tx: string | null; activeAfter: number } | { kind: "blocked"; code: string } | { kind: "failed" };
 
 type Outcome = { kind: "blocked"; code: string } | { kind: "accepted"; tx: string } | { kind: "failed" };
 
@@ -40,7 +59,40 @@ function Path({ compromised, outcome }: { compromised: boolean; outcome: Outcome
 
 export default function AttackLabPage() {
   const { state, retry } = useLoad(listRequests);
-  const [compromised, setCompromised] = useState(false);
+  const [compromised, setCompromisedState] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState<Added | null>(null);
+  const countdown = useCountdown(added?.kind === "added" ? added.activeAfter : null);
+
+  useEffect(() => {
+    try {
+      setCompromisedState(sessionStorage.getItem(COMPROMISED_KEY) === "on");
+    } catch {
+      // storage unavailable: the toggle just starts off
+    }
+  }, []);
+
+  function setCompromised(on: boolean) {
+    setCompromisedState(on);
+    try {
+      sessionStorage.setItem(COMPROMISED_KEY, on ? "on" : "off");
+    } catch {
+      // storage unavailable
+    }
+  }
+
+  async function addPayee() {
+    setAdding(true);
+    setAdded(null);
+    try {
+      const r = await addPhishingPayee();
+      setAdded(r.ok ? { kind: "added", tx: r.tx, activeAfter: r.active_after } : { kind: "blocked", code: r.error_code });
+    } catch {
+      setAdded({ kind: "failed" });
+    } finally {
+      setAdding(false);
+    }
+  }
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [shot, setShot] = useState(0);
@@ -121,6 +173,41 @@ export default function AttackLabPage() {
             {!compromised ? (
               <p className="mt-2 text-small text-muted">Turn on &quot;Compromised agent&quot; to arm this button.</p>
             ) : null}
+
+            <div className="mt-5 border-t border-hairline pt-4">
+              <h2 className="text-heading font-semibold">Phish an approver too</h2>
+              <p className="mt-1 text-small text-muted">
+                The attacker tricks an approver into adding the new wallet as a payee. The vault starts a waiting period before
+                it can be paid (60 seconds here, 72 hours in production). Then fire again.
+              </p>
+              <Button variant="secondary" className="mt-3 w-full" disabled={adding} pending={adding} onClick={addPayee}>
+                {adding ? "Adding..." : "Approver adds the new wallet"}
+              </Button>
+              <div aria-live="polite" className="mt-2 text-small">
+                {added?.kind === "added" ? (
+                  <p className="flex flex-wrap items-center gap-2">
+                    <Pill tone="held">{countdown ? `Payable in ${countdown}` : "Waiting period over"}</Pill>
+                    <span className="text-muted">
+                      {added.tx ? "Added to the allowlist on Solana." : "Already on the allowlist."}
+                    </span>
+                    {added.tx ? (
+                      <a
+                        href={explorerTxUrl(added.tx)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-action underline underline-offset-4 hover:text-action-hover"
+                      >
+                        View
+                        <ExternalIcon className="h-3 w-3" />
+                        <span className="sr-only">transaction on Solana Explorer (opens in a new tab)</span>
+                      </a>
+                    ) : null}
+                  </p>
+                ) : null}
+                {added?.kind === "blocked" ? <ErrorBanner code={added.code} /> : null}
+                {added?.kind === "failed" ? <ErrorBanner message="The server didn't answer. Try again." /> : null}
+              </div>
+            </div>
           </div>
         </Panel>
 
@@ -143,7 +230,15 @@ export default function AttackLabPage() {
                     Blocked by rule
                   </Pill>
                 </div>
-                <p className="mt-3 origin-left animate-slam break-all font-mono text-code-xl font-medium text-dispute">{outcome.code}</p>
+                <p className="mt-3 origin-left animate-slam font-mono text-code-xl font-medium text-dispute [overflow-wrap:anywhere]">
+                  {/* Wrap only between words of the code ("Payee|Not|Allowed"), never mid-word. */}
+                  {outcome.code.split(/(?=[A-Z])/).map((part, i) => (
+                    <span key={i}>
+                      {i > 0 ? <wbr /> : null}
+                      {part}
+                    </span>
+                  ))}
+                </p>
                 {errorSentence(outcome.code) ? <p className="mt-2 text-heading">{errorSentence(outcome.code)}</p> : null}
                 <p className="mt-1 text-muted">No money moved. The agent&apos;s key alone can never release a payment.</p>
               </>

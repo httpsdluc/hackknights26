@@ -37,6 +37,14 @@ DailyCapExceeded
 AlreadyExecuted
 ```
 
+One more code comes from the server, never from the chain:
+
+```
+AgentRefused
+```
+
+`AgentRefused` means the agent itself declined to propose before touching the chain: the request was rejected by verification, mentions new payment details, or isn't a payable type (Story 2, and the phishing email when the agent is not compromised).
+
 ## 4. HTTP routes (server, port 3001)
 
 | Method | Path | Body | Returns |
@@ -48,6 +56,8 @@ AlreadyExecuted
 | POST | `/proposals/:id/execute` | | `ProposeResult` |
 | POST | `/vault/kill-switch` | `{ "enabled": boolean }` | `ProposeResult` |
 | POST | `/attack/compromised-agent` | `{ "requestId": string }` | `ProposeResult` |
+| POST | `/attack/add-phishing-payee` | | `AddPayeeResult` |
+| GET | `/requests/:id/evidence` | | `EvidenceCheck` |
 | GET | `/vault` | | `VaultState` |
 
 ### Action results
@@ -61,11 +71,42 @@ Propose, approve, execute and kill-switch **always return HTTP 200** with one of
 { "ok": false, "error_code": "<code>" }
 ```
 
-`error_code` is one of the codes in section 3.
+`error_code` is one of the codes in section 3 (the chain codes, or `AgentRefused` from `POST /requests/:id/propose`).
 
 ### Kill switch direction
 
 `POST /vault/kill-switch { "enabled": false }` **stops the agent** (kill switch ON). `enabled` means **agent enabled**, not "kill switch enabled", and matches `rules.agent_enabled` in `GET /vault`. `{ "enabled": true }` lets the agent propose again.
+
+### `POST /attack/add-phishing-payee`
+
+Story 3, second beat: a phished approver adds the phishing wallet (`fixtures/attack.json`) as a payee. The program starts its timelock, so the compromised agent's next proposal fails with `PayeeTimelocked` instead of `PayeeNotAllowed`. Always HTTP 200:
+
+```json
+{ "ok": true, "tx": "...", "active_after": 1791677167 }
+```
+```json
+{ "ok": false, "error_code": "<code>" }
+```
+
+- `tx` is `null` if the wallet was already a payee of this vault (nothing was sent). Run `scripts/reset-demo.ts` to start over.
+- `active_after` is unix **seconds**, same as in `GET /vault`.
+
+### `GET /requests/:id/evidence` example response
+
+Recomputes the evidence hash now, from the source email file, the fixture files and the engine (only the parsed request is reused from memory), and compares it with the hash on the request and the one stored in the on-chain proposal.
+
+```json
+{
+  "recomputed_hash": "4d73...bc1d",
+  "stored_hash": "4d73...bc1d",
+  "on_chain_hash": "4d73...bc1d",
+  "match": true
+}
+```
+
+- `on_chain_hash` is `null` until the request has a proposal.
+- `match` is true when `recomputed_hash` equals `stored_hash` and, if there is one, `on_chain_hash`.
+- Unknown request: HTTP 404, same as `GET /requests/:id`.
 
 ### `GET /vault` example response
 
@@ -133,6 +174,8 @@ execute(proposalId): { tx }
 setAgentEnabled(enabled): { tx }          // enabled = agent enabled; false = kill switch ON
 proposePaymentToWallet({ wallet, amountUsd, kind, evidenceHash }): { tx, proposalId }   // Story 3 compromised agent only
 getVaultState(): VaultState               // GET /vault
+addPayeeForWallet({ wallet, label }): { tx, activeAfter }   // Story 3 phished approver; tx null if already a payee
+getProposalEvidenceHash(proposalId): string                  // 64 hex characters, read from the proposal account
 ```
 
 Chain functions are async (they return Promises of the shapes above). `amountUsd` is whole USD; `chain/` converts to 6 decimals.
