@@ -141,6 +141,13 @@ const execute = (f: Fixture, proposal: PublicKey) =>
     })
     .rpc();
 
+const setAgentEnabled = (f: Fixture, enabled: boolean, signer: Keypair) =>
+  program.methods
+    .setAgentEnabled(enabled)
+    .accountsPartial({ authority: signer.publicKey, vault: f.vault })
+    .signers([signer])
+    .rpc();
+
 const balance = async (ata: PublicKey) => (await getAccount(conn, ata)).amount;
 
 describe("policy_vault", () => {
@@ -165,5 +172,97 @@ describe("policy_vault", () => {
     const p = await propose(f, 1_900_000);
     await approve(f, p, f.approver1);
     await expectCode(execute(f, p), "NotEnoughApprovals");
+  });
+
+  it("agent calling approve → Unauthorized", async () => {
+    const p = await propose(f, 500_000);
+    await expectCode(approve(f, p, f.agent), "Unauthorized");
+  });
+
+  it("same approver twice → AlreadyApproved; execute twice → AlreadyExecuted", async () => {
+    const p = await propose(f, 500_000); // under large_amount: one approval is enough
+    await approve(f, p, f.approver1);
+    await expectCode(approve(f, p, f.approver1), "AlreadyApproved");
+    await execute(f, p);
+    await expectCode(execute(f, p), "AlreadyExecuted");
+    await expectCode(approve(f, p, f.approver2), "AlreadyExecuted");
+  });
+
+  it("amount over the payee's per-tx limit → OverPerTxLimit", async () => {
+    await expectCode(propose(f, 3_000_001), "OverPerTxLimit");
+  });
+
+  it("non-approver adding a payee → Unauthorized", async () => {
+    const tokenAccount = await createAccount(conn, payer, f.mint, Keypair.generate().publicKey);
+    await expectCode(
+      program.methods
+        .addPayee(label("Mallory"), usd(1))
+        .accounts({ approver: f.agent.publicKey, vault: f.vault, payeeTokenAccount: tokenAccount })
+        .signers([f.agent])
+        .rpc(),
+      "Unauthorized",
+    );
+  });
+
+  it("kill switch: approver disables → AgentDisabled; only admin re-enables", async () => {
+    await expectCode(setAgentEnabled(f, false, f.agent), "Unauthorized");
+    await setAgentEnabled(f, false, f.approver2);
+    await expectCode(propose(f, 500_000), "AgentDisabled");
+    await expectCode(setAgentEnabled(f, true, f.approver1), "Unauthorized");
+    await setAgentEnabled(f, true, f.admin);
+    await propose(f, 500_000);
+  });
+
+  it("initialize_vault with the agent as an approver → AgentCannotApprove", async () => {
+    const admin = Keypair.generate();
+    await fund(admin.publicKey);
+    await expectCode(
+      program.methods
+        .initializeVault(admin.publicKey, [admin.publicKey], usd(1), usd(1), new BN(0))
+        .accounts({ admin: admin.publicKey, mint: f.mint })
+        .signers([admin])
+        .rpc(),
+      "AgentCannotApprove",
+    );
+  });
+});
+
+describe("policy_vault PayeeNotAllowed", () => {
+  let f: Fixture;
+  before(async () => {
+    f = await makeVault(0);
+  });
+
+  /** Asserts the exact custom error: name PayeeNotAllowed, number 6003 (not AccountNotInitialized, 3012). */
+  async function expectPayeeNotAllowed(p: Promise<unknown>) {
+    try {
+      await p;
+    } catch (e: any) {
+      const err = e?.error?.errorCode ?? anchor.AnchorError.parse(e?.logs ?? [])?.error.errorCode;
+      assert.deepEqual({ code: err?.code, number: err?.number }, { code: "PayeeNotAllowed", number: 6003 });
+      return;
+    }
+    assert.fail("expected PayeeNotAllowed, but the transaction succeeded");
+  }
+
+  it("wallet with no Payee account → PayeeNotAllowed (6003), not AccountNotInitialized", async () => {
+    const stranger = await createAccount(conn, payer, f.mint, Keypair.generate().publicKey);
+    await expectPayeeNotAllowed(propose(f, 500_000, payeePda(f.vault, stranger)));
+  });
+
+  it("a Payee registered to a different vault → PayeeNotAllowed", async () => {
+    const other = await makeVault(0);
+    await expectPayeeNotAllowed(propose(f, 500_000, other.payee));
+  });
+
+  it("a program account that isn't a Payee (the vault itself) → PayeeNotAllowed", async () => {
+    await expectPayeeNotAllowed(propose(f, 500_000, f.vault));
+  });
+});
+
+describe("policy_vault timelock", () => {
+  it("proposing to a just-added payee → PayeeTimelocked", async () => {
+    const f = await makeVault(60);
+    await expectCode(propose(f, 500_000), "PayeeTimelocked");
   });
 });

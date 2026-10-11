@@ -1,4 +1,4 @@
-// Handlers are filled in step by step; silence unused-arg warnings until then.
+// `nonce` in propose_payment is only used in the proposal's PDA seeds.
 #![allow(unused_variables)]
 // Anchor 0.31's #[program] macro calls the deprecated AccountInfo::realloc.
 #![allow(deprecated)]
@@ -65,7 +65,13 @@ pub mod policy_vault {
         nonce: u64,
     ) -> Result<()> {
         let vault = &ctx.accounts.vault;
+        require!(vault.agent_enabled, PolicyError::AgentDisabled);
         let payee = load_payee(&ctx.accounts.payee, &vault.key())?;
+        require!(
+            Clock::get()?.unix_timestamp >= payee.active_after,
+            PolicyError::PayeeTimelocked
+        );
+        require!(amount <= payee.per_tx_limit, PolicyError::OverPerTxLimit);
 
         let proposal = &mut ctx.accounts.proposal;
         proposal.vault = vault.key();
@@ -123,7 +129,16 @@ pub mod policy_vault {
         Ok(())
     }
 
+    /// Kill switch. Any approver can disable the agent; only the admin can re-enable it.
     pub fn set_agent_enabled(ctx: Context<SetAgentEnabled>, enabled: bool) -> Result<()> {
+        let signer = ctx.accounts.authority.key();
+        let vault = &mut ctx.accounts.vault;
+        if enabled {
+            require_keys_eq!(signer, vault.admin, PolicyError::Unauthorized);
+        } else {
+            require!(vault.approvers.contains(&signer), PolicyError::Unauthorized);
+        }
+        vault.agent_enabled = enabled;
         Ok(())
     }
 }

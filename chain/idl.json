@@ -584,6 +584,9 @@
     },
     {
       "name": "set_agent_enabled",
+      "docs": [
+        "Kill switch. Any approver can disable the agent; only the admin can re-enable it."
+      ],
       "discriminator": [
         136,
         10,
