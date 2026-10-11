@@ -2,15 +2,13 @@
 // server works before the real client exists. Errors are thrown as { error_code } like the
 // program's error names. Tx signatures are fake ("STUB_..."), never real.
 //
-// proposePayment / approve / execute / setAgentEnabled: CONTRACT.md §5 signatures.
-// proposePaymentToWallet / getVaultState: NOT in CONTRACT.md. The server needs them for
-// POST /attack/compromised-agent and GET /vault. Ask A to add them (or agree on alternatives).
+// Implements the full ChainClient from CONTRACT.md §5 (checked at the bottom of this file).
+// Like the real program, there is no daily cap: spent_today_usd stays 0.
 import { randomBytes } from "node:crypto";
-import type { ErrorCode, ProposePaymentArgs } from "../../shared/types.ts";
+import type { ChainClient, ErrorCode, ProposePaymentArgs, ProposePaymentToWalletArgs, VaultState } from "../../shared/types.ts";
 import { readFixtureJson } from "../src/fixtures.ts";
 
 const LARGE_AMOUNT = 1_000_000;
-const DAILY_CAP = 5_000_000;
 const PER_TX_LIMIT = 5_000_000;
 const APPROVERS = ["approver1", "approver2"];
 
@@ -20,7 +18,7 @@ const fail = (code: ErrorCode): never => {
 const fakeTx = () => "STUB_" + randomBytes(32).toString("hex");
 
 let agentEnabled = true;
-let spentToday = 0;
+let paidOut = 0;
 let nonce = 0;
 const proposals = new Map<string, { wallet: string; amountUsd: number; approvals: Set<string>; executed: boolean }>();
 
@@ -43,12 +41,7 @@ export async function proposePayment(args: ProposePaymentArgs): Promise<{ tx: st
   return propose(cp.wallet, args.amountUsd);
 }
 
-export async function proposePaymentToWallet(args: {
-  wallet: string;
-  amountUsd: number;
-  kind: ProposePaymentArgs["kind"];
-  evidenceHash: string;
-}): Promise<{ tx: string; proposalId: string }> {
+export async function proposePaymentToWallet(args: ProposePaymentToWalletArgs): Promise<{ tx: string; proposalId: string }> {
   return propose(args.wallet, args.amountUsd);
 }
 
@@ -65,8 +58,7 @@ export async function execute(proposalId: string): Promise<{ tx: string }> {
   const p = proposals.get(proposalId) ?? fail("Unauthorized");
   if (p.executed) fail("AlreadyExecuted");
   if (p.approvals.size < (p.amountUsd >= LARGE_AMOUNT ? 2 : 1)) fail("NotEnoughApprovals");
-  if (spentToday + p.amountUsd > DAILY_CAP) fail("DailyCapExceeded");
-  spentToday += p.amountUsd;
+  paidOut += p.amountUsd;
   p.executed = true;
   return { tx: fakeTx() };
 }
@@ -76,14 +68,13 @@ export async function setAgentEnabled(enabled: boolean): Promise<{ tx: string }>
   return { tx: fakeTx() };
 }
 
-export async function getVaultState() {
+export async function getVaultState(): Promise<VaultState> {
   return {
     rules: {
       agent_enabled: agentEnabled,
       large_amount_usd: LARGE_AMOUNT,
       approvals_required_large: 2,
       approvals_required_small: 1,
-      daily_cap_usd: DAILY_CAP,
       payee_timelock_secs: 60,
     },
     payees: registry().counterparties.map((c) => ({
@@ -93,7 +84,11 @@ export async function getVaultState() {
       per_tx_limit_usd: PER_TX_LIMIT,
       active_after: 0,
     })),
-    balances: { vault_usd: 10_000_000 - spentToday },
-    spent_today_usd: spentToday,
+    balances: { vault_usd: 10_000_000 - paidOut },
+    spent_today_usd: 0,
   };
 }
+
+// Compile-time check that this stub matches the contract's ChainClient.
+const _contract: ChainClient = { proposePayment, approve, execute, setAgentEnabled, proposePaymentToWallet, getVaultState };
+void _contract;
